@@ -3,6 +3,8 @@ import tensorflow.keras.backend as K
 import numpy as np
 from scipy.stats import spearmanr
 
+import pdb
+
 # taken from: https://www.kaggle.com/akensert/bert-base-tf2-0-minimalistic
 def compute_spearmanr(trues, preds):
     rhos = []
@@ -11,16 +13,20 @@ def compute_spearmanr(trues, preds):
     return np.mean(rhos)
 
 class SpearmanrCallback(tf.keras.callbacks.Callback):
-    def __init__(self, val_data, patience=5, restore=True):
+    """
+    TODO: decrease lr when val rho gets worst
+    """
+    def __init__(self, val_data, patience_lr=5, patience_early=10, lr_scale=0.1, lr_min=1e-6, restore=True):
         self.x_valid, self.y_valid = val_data
-        self.patience = patience
+        self.patience = {'lr': patience_lr, 'early': patience_early}
         self.restore = restore
-        
+        self.lr_scale, self.lr_min = lr_scale, lr_min
+
         self._reset()
         
     def _reset(self):
         self.best_rho = -np.inf
-        self.worst = 0
+        self.worst = {'lr': 0, 'early': 0}
         
     def on_train_begin(self, logs={}):
         self._reset()
@@ -32,11 +38,19 @@ class SpearmanrCallback(tf.keras.callbacks.Callback):
         if rho_val > self.best_rho:
             self.best_rho = rho_val
             self.model.save_weights('best_weights.h5')
-            self.worst = 0 
+            self.worst = {k: 0 for k, v in self.worst.items()}
         else:
-            self.worst += 1
-        
-        if self.worst >= self.patience:
+            self.worst = {k: v+1 for k,v in self.worst.items()}
+
+        # reduce on plateau
+        if self.worst['lr'] >= self.patience['lr']:
+            lr = K.get_value(self.model.optimizer.lr)
+            print(f"\nReducing lr to {lr}")
+            K.set_value(self.model.optimizer.lr, max(lr * self.lr_scale, self.lr_min))
+            self.worst['lr'] = 0 
+
+        # early stopping 
+        if self.worst['early'] >= self.patience['early']:
             self.model.stop_training = True
             print(f'\nEarly stopping at epoch {epoch}')
             if self.restore:
