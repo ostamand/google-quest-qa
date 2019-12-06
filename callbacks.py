@@ -1,5 +1,49 @@
 import tensorflow as tf
 import tensorflow.keras.backend as K
+import numpy as np
+from scipy.stats import spearmanr
+
+# taken from: https://www.kaggle.com/akensert/bert-base-tf2-0-minimalistic
+def compute_spearmanr(trues, preds):
+    rhos = []
+    for col_trues, col_pred in zip(trues.T, preds.T):
+        rhos.append(spearmanr(col_trues, col_pred + np.random.normal(0, 1e-7, col_pred.shape[0])).correlation)
+    return np.mean(rhos)
+
+class SpearmanrCallback(tf.keras.callbacks.Callback):
+    def __init__(self, val_data, patience=5, restore=True):
+        self.x_valid, self.y_valid = val_data
+        self.patience = patience
+        self.restore = restore
+        
+        self._reset()
+        
+    def _reset(self):
+        self.best_rho = -np.inf
+        self.worst = 0
+        
+    def on_train_begin(self, logs={}):
+        self._reset()
+        
+    def on_epoch_end(self, epoch, logs={}):
+        y_preds = self.model.predict(self.x_valid, batch_size=8)
+        rho_val = compute_spearmanr(self.y_valid, y_preds)
+        
+        if rho_val > self.best_rho:
+            self.best_rho = rho_val
+            self.model.save_weights('best_weights.h5')
+            self.worst = 0 
+        else:
+            self.worst += 1
+        
+        if self.worst >= self.patience:
+            self.model.stop_training = True
+            print(f'\nEarly stopping at epoch {epoch}')
+            if self.restore:
+                print(f'\nRestoring best weights')
+                self.model.load_weights('best_weights.h5')
+            
+        print(f"\nrho val: {rho_val:.4f}")
 
 class LROneCycle(tf.keras.callbacks.Callback):
     """One Cycle Learning Rate Schedule Callback
