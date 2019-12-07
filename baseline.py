@@ -41,7 +41,7 @@ class Baseline():
         question_body = get_features(model, tokenizer, self.params['maxlen'], df.question_body.values)
         answer = get_features(model, tokenizer, self.params['maxlen'], df.answer.values)
         question_title = get_features(model, tokenizer, self.params['maxlen'], df.question_title.values)
-        return np.hstack([question_body, answer, question_title])
+        return np.hstack([question_body, question_title, answer])
 
     def load_features(self):
         with open(self.params['temp_dir'] / 'features.pickle', 'rb') as f:
@@ -95,12 +95,13 @@ class Baseline():
 
     def train(self):
         x = {}
+
         for k,v in self.features.items():
             f = self.features[k]
             x[k] = np.hstack([
                 f['sentence_embeds'], 
+                f['category'],
                 f['sentence_embeds_dist'], 
-                f['category'], 
                 f['distilbert_hidden_states']
             ])
         
@@ -151,22 +152,6 @@ class Baseline():
                 test_preds.append(model.predict(x_test))
 
         return rhos, test_preds
-
-            
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     @classmethod
     def default_params(cls):
