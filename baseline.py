@@ -16,15 +16,26 @@ from sklearn.preprocessing import OneHotEncoder
 
 from sentence_encodings import embeddings_from_col, get_dist_features
 from transformer_encodings import get_features
-from constants import text_columns
+from constants import text_columns, targets
+from helpers import go_deterministic
+from callbacks import SpearmanrCallback
 
 import pdb
 
+def get_model(input_size, output_size):
+    inputs = tf.keras.layers.Input(shape=(input_size))
+    x = tf.keras.layers.Dense(512, activation='relu')(inputs)
+    x = tf.keras.layers.Dropout(0.2)(x)
+    x = tf.keras.layers.Dense(output_size, activation='sigmoid')(x)
+    model = tf.keras.Model(inputs=inputs, outputs=x)
+    return model
+
 class Baseline():
 
-    def __init__(self, params):
+    def __init__(self, params, data=None):
         self.params = params
-        self.features = None  
+        self.features = None
+        self.data = data  
 
     def _get_bert_hidden_states(self, model, tokenizer, df):
         question_body = get_features(model, tokenizer, self.params['maxlen'], df.question_body.values)
@@ -37,6 +48,7 @@ class Baseline():
             self.features = pickle.load(f)
 
     def calculate_features(self, data: Dict[str, pd.DataFrame], save=False):
+        self.data = data
         model_dir = self.params['model_dir']
 
         # distilbert hidden states
@@ -81,14 +93,90 @@ class Baseline():
             with open(self.params['temp_dir'] / 'features.pickle', 'wb') as f:
                 pickle.dump(self.features, f)
 
-    def train_and_evaluate(self):
-        pass
+    def train(self):
+        x = {}
+        for k,v in self.features.items():
+            f = self.features[k]
+            x[k] = np.hstack([
+                f['sentence_embeds'], 
+                f['sentence_embeds_dist'], 
+                f['category'], 
+                f['distilbert_hidden_states']
+            ])
+        
+        y_train = self.data['train'][targets].values
+        x_train = x['train']
+        x_test = x['test'] if 'test' in x else None
+
+        rhos = []
+        test_preds = []
+        models = []
+
+        kf = KFold(n_splits=self.params['n_splits'], random_state=self.params['seed'], shuffle=True)
+
+        for i, (tr, val) in enumerate(kf.split(x_train)):
+            x_tr = x_train[tr]
+            x_vl = x_train[val]
+    
+            y_tr = y_train[tr]
+            y_vl = y_train[val]
+
+            K.clear_session()
+            go_deterministic(self.params['seed'])
+
+            model = get_model(x_tr.shape[1], y_tr.shape[1])
+
+            model.compile(
+                optimizer=tf.keras.optimizers.Adam(lr=1e-4),
+                loss=['binary_crossentropy']
+            )
+
+            # TODO change checkpoint name
+            cb = SpearmanrCallback((x_vl, y_vl))
+
+            history = model.fit(
+                x_tr, 
+                y_tr, 
+                validation_data=(x_vl, y_vl),
+                epochs=self.params['epochs'], 
+                batch_size=self.params['bs'],
+                verbose=True,
+                callbacks=[cb]
+            )
+
+            rhos.append(cb.best_rho)
+            models.append(model)
+
+            if x_test is not None:
+                test_preds.append(model.predict(x_test))
+
+        return rhos, test_preds
+
+            
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     @classmethod
     def default_params(cls):
         params = {
             'temp_dir': Path('../.tmp'),
             'model_dir': Path('../model'),
-            'maxlen': 512
+            'maxlen': 512, 
+            'seed': 42,
+            'epochs': 100, 
+            'bs': 32, 
+            'n_splits': 5
         }
         return params
