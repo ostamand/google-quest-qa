@@ -30,3 +30,5 @@ targets = [
     'answer_type_reason_explanation',
     'answer_well_written'    
 ]
+
+text_columns = ['question_title', 'question_body', 'answer']
