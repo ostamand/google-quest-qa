@@ -43,8 +43,9 @@ class Baseline():
         question_title = get_features(model, tokenizer, self.params['maxlen'], df.question_title.values)
         return np.hstack([question_body, question_title, answer])
 
-    def load_features(self):
-        with open(self.params['temp_dir'] / 'features.pickle', 'rb') as f:
+    def load_features(self, path=None):
+        path = path if path else self.params['temp_dir'] / 'features.pickle'
+        with open(path, 'rb') as f:
             self.features = pickle.load(f)
 
     def calculate_features(self, data: Dict[str, pd.DataFrame], save=False):
