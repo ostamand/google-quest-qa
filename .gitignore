@@ -133,3 +133,4 @@ model/
 notebooks/
 .tmp/
 reference/
+.logs/
