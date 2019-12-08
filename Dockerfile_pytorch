@@ -1,0 +1,16 @@
+FROM pytorch/pytorch:1.3-cuda10.1-cudnn7-runtime
+WORKDIR /workspace
+COPY requirements.txt requirements.txt
+COPY lib/apex apex
+RUN pip install -r requirements.txt && \
+    (cd apex; pip install -v --no-cache-dir ./) && \
+    pip install jupyter_contrib_nbextensions && \
+    pip install jupyter_nbextensions_configurator && \
+    jupyter contrib nbextension install --user && \
+    jupyter nbextension enable codefolding/main && \
+    jupyter nbextension enable hinterland/hinterland && \
+    jupyter nbextension enable scratchpad/main
+    
+
+
+
