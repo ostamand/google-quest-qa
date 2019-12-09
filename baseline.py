@@ -17,7 +17,7 @@ from sklearn.preprocessing import OneHotEncoder
 from sentence_encodings import embeddings_from_col, get_dist_features
 from transformer_encodings import get_features
 from constants import text_columns, targets
-from helpers import go_deterministic
+from tf_helpers import go_deterministic
 from callbacks import SpearmanrCallback
 
 import pdb
