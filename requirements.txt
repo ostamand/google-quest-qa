@@ -3,3 +3,10 @@ jupyter
 matplotlib
 scikit-learn==0.21.3
 tensorflow_hub==0.7.0
+tqdm
+boto3
+requests
+regex
+sentencepiece
+sacremoses
+tensorboard
