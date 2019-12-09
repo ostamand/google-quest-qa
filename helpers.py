@@ -1,13 +1,21 @@
+import os
+
 import random 
 import numpy as np
 import torch
-import os
+from scipy.stats import spearmanr
 
 def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     os.environ['PYTHONHASHSEED']=str(seed)
+
+def compute_spearmanr(trues, preds):
+    rhos = []
+    for col_trues, col_pred in zip(trues.T, preds.T):
+        rhos.append(spearmanr(col_trues, col_pred + np.random.normal(0, 1e-7, col_pred.shape[0])).correlation)
+    return np.mean(rhos)
 
 class EarlyStoppingSimple():
     """Early stopping based on a metric."""
