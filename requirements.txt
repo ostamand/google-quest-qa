@@ -10,3 +10,4 @@ regex
 sentencepiece
 sacremoses
 tensorboard
+fire
