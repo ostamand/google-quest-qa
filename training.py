@@ -10,6 +10,9 @@ from tqdm import tqdm
 
 from helpers import compute_spearmanr, set_seed, EarlyStoppingSimple
 from schedulers import LearningRateWithUpDown
+
+#TODO remove
+import pdb
     
 def get_max_gradient(params, norm=2):
     with torch.no_grad():
@@ -93,8 +96,11 @@ class Trainer():
                 loss = lossf(outs, y_batch.to(device))
                 acc_loss += loss.item() / bs
 
-                with amp.scale_loss(loss, optimizer) as scaled_loss:
-                    scaled_loss.backward()
+                if p['do_apex']:
+                    with amp.scale_loss(loss, optimizer) as scaled_loss:
+                        scaled_loss.backward()
+                else:
+                    loss.backward()
                     
                 if it % p['accumulation_steps'] == 0:
                     # clip gradients (l2)
@@ -165,5 +171,6 @@ class Trainer():
             'seed': 42, 
             'clip': 1, 
             'warmup': 0.1, 
-            'warmdown': 0.1
+            'warmdown': 0.1,
+            'do_apex': True
         }
