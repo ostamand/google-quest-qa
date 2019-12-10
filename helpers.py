@@ -20,7 +20,7 @@ def compute_spearmanr(trues, preds):
 class EarlyStoppingSimple():
     """Early stopping based on a metric."""
     def __init__(self, model, patience=10, min_delta=1e-4):
-        self._best_score = np.inf
+        self._best_score = -np.inf
         self._best_step = -1
         self._training_done = False
         self._current_step = 0
@@ -36,12 +36,10 @@ class EarlyStoppingSimple():
             
     def step(self, value):
         self._current_step += 1
-        if value < (self.best_score - self.min_delta):
+        if value > (self.best_score + self.min_delta):
             self.count = 0
             self._best_score = value
             self._best_step = self._current_step
-            print()
-            print('Saving checkpoint...')
             torch.save(self.model, '.temp/best.pth')
         else:
             if self.count >= self.patience:
