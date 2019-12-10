@@ -32,3 +32,9 @@ Check GPU usage
 ```
 nvidia-smi -l 1
 ```
+
+Run command on existing docker container
+
+````
+docker exec -it 10fe76a885c9 bash
+```
