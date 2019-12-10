@@ -8,6 +8,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
 from apex import amp
+import wandb
 
 from helpers import compute_spearmanr, set_seed, EarlyStoppingSimple
 from schedulers import LearningRateWithUpDown
@@ -23,11 +24,39 @@ def get_max_gradient(params, norm=2):
             max_g = g if g > max_g else max_g
     return max_g
 
+class MultiLogger():
+    def __init__(self, model=None, log_dir='.logs', project=None, do_wandb=False, do_tb=False, **kwargs):
+        self.do_wandb, self.do_tb = do_wandb, do_tb
+        self.log_dir = log_dir
+
+        self._writer = None
+
+        if do_wandb:
+            wandb.init(project=project)
+            if model:
+                wandb.watch(model)
+
+    def add_scalars(self, logs):
+        step = logs['step']
+        logs = {k:v for k,v in logs.items() if k != 'step'}
+        if self.do_tb:
+            for k,v in logs.items():
+                self.writer.add_scalar(k, v, step)
+        if self.do_wandb:
+            wandb.log(logs)
+
+    @property
+    def writer(self):
+        if self.do_tb and not self._writer:
+            self._writer = SummaryWriter(os.path.join(self.log_dir, datetime.now().strftime("%Y%m%d_%H%M%S")))
+        return self._writer
+
 class Trainer():
     """
         - Mixed precision training
         - Accumulation steps
         - TensorBoard logging
+        - Wandb logging
         - ReduceOnPlateau
         - Early stopping
         - LR Scheduling (warmup, warmdown)
@@ -63,9 +92,9 @@ class Trainer():
         running_loss = None
         acc_loss = 0
         it = 1 # global steps
-        
-        writer = SummaryWriter(os.path.join(p['log_dir'], datetime.now().strftime("%Y%m%d_%H%M%S")))
 
+        logger = MultiLogger(model, **p)
+        
         scheduler = ReduceLROnPlateau(optimizer, 'max', patience=2, verbose=True, factor=0.1)
         early_stopping = EarlyStoppingSimple(model, patience=5, min_delta=0)  
         lr_scheduler = LearningRateWithUpDown(
@@ -89,10 +118,9 @@ class Trainer():
             for batch_i, (x_batch, y_batch) in pb:
                 bs = x_batch.shape[0]
                 
-                # step and log lr
+                # step
                 lr_scheduler.step() 
-                writer.add_scalar('lr/train', optimizer.param_groups[0]['lr'], it)
-                
+
                 outs = model(x_batch.to(device), attention_mask=(x_batch > 0).to(device))
                 loss = lossf(outs, y_batch.to(device))
                 acc_loss += loss.item() / bs
@@ -104,17 +132,22 @@ class Trainer():
                     loss.backward()
                     
                 if it % p['accumulation_steps'] == 0:
+                    logs = {'step': it}
+                    logs['lr/train'] = optimizer.param_groups[0]['lr']
+
                     # clip gradients (l2)
                     torch.nn.utils.clip_grad_norm_(model.parameters(), p['clip'])
                     
                     # log gradients after clipping (l2)
-                    writer.add_scalar('grads/train', get_max_gradient(model.parameters()), it)
-                
+                    logs['grads/train'] = get_max_gradient(model.parameters())
+
                     optimizer.step()
                     optimizer.zero_grad()
                     
                     acc_loss /= p['accumulation_steps']
-                    writer.add_scalar('loss/train', acc_loss, it)
+                    logs['loss/train'] = acc_loss
+
+                    logger.add_scalars(logs)
                     
                     if running_loss:
                         running_loss = 0.98 * running_loss + 0.02 * acc_loss
@@ -129,15 +162,16 @@ class Trainer():
                 
             # evaluate 
             if valid_loader:
-                logs = self.evaluate(model, valid_loader)
+                metrics = self.evaluate(model, valid_loader)
                 
-                scheduler.step(logs['spearmanr'])
-                early_stopping.step(logs['spearmanr'])
+                scheduler.step(metrics['spearmanr'])
+                early_stopping.step(metrics['spearmanr'])
+
+                logs = {'step': it}
+                logs['loss/valid'] = metrics['loss']
+                logs['spearmanr/valid'] = metrics['spearmanr']
                 
-                writer.add_scalar('loss/valid', logs['loss'], it)
-                writer.add_scalar('spearmanr/valid', logs['spearmanr'], it)
-                
-                print(f"rho: {logs['spearmanr']:.4f} (val), loss: {logs['loss']:.4f} (val)")
+                print(f"rho: {metrics['spearmanr']:.4f} (val), loss: {metrics['loss']:.4f} (val)")
         
         early_stopping.restore()
         writer.close()
@@ -169,10 +203,12 @@ class Trainer():
             'device': 'cuda', 
             'accumulation_steps': 2,
             'epochs': 1,
-            'log_dir': '../.logs',
+            'log_dir': '.logs',
             'seed': 42, 
             'clip': 1, 
             'warmup': 0.1, 
             'warmdown': 0.1,
-            'do_apex': True
+            'do_apex': True,
+            'do_wandb': False,
+            'do_tb': False
         }

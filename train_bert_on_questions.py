@@ -45,10 +45,13 @@ def main():
     parser.add_argument("--maxlen", default=512, type=int)
     parser.add_argument("--device", default="cuda", type=str)
     parser.add_argument("--do_apex", action='store_true')
+    parser.add_argument("--do_wandb", action='store_true')
+    parser.add_argument("--do_tb", action='store_true')
     parser.add_argument("--warmup", default=0.5, type=float)
     parser.add_argument("--warmdown", default=0.5, type=float)
-    parser.add_argument("--clip", default=5.0, type=float)
+    parser.add_argument("--clip", default=10.0, type=float)
     parser.add_argument("--accumulation_steps", default=2, type=int)
+    parser.add_argument("--project", default="google-quest-qa", type=str)
     # parser.add_argument("--do_head", action="store_true")
     # parser.add_argument("--head_ckpt", default="", type=str)
 
@@ -85,16 +88,17 @@ def main():
     params = BertOnQuestions.default_params()
     params['fc_dp'] = 0.
     model = BertOnQuestions(len(targets_question), args.model_dir, **params)
-    model.to(device)
-
     model.train_head_only()
+    model.to(device)
+    
     optimizer = optim.Adam(model.optimizer_grouped_parameters, lr=1e-2)
 
     if args.do_apex:
+        # TODO tru O2
         model, optimizer = amp.initialize(model, optimizer, opt_level="O1", verbosity=0)
 
     trainer = Trainer(**args.__dict__)
-    trainer.train(model, loaders, optimizer, epochs=20)
+    trainer.train(model, loaders, optimizer, epochs=15)
 
     # train all layers
     # TODO
