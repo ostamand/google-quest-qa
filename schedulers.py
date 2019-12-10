@@ -1,3 +1,5 @@
+import numpy as np
+
 class LearningRateWithUpDown():
     """Add warmup & warmdown to the optimizer learning rate."""
     def __init__(self, optimizer, total_steps, warmup=0.1, warmdown=0.1, ini_lr=1e-6, final_lr=1e-6, min_lr=1e-6):
