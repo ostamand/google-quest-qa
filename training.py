@@ -7,6 +7,7 @@ import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
+from apex import amp
 
 from helpers import compute_spearmanr, set_seed, EarlyStoppingSimple
 from schedulers import LearningRateWithUpDown
@@ -142,6 +143,7 @@ class Trainer():
         writer.close()
     
     def evaluate(self, model, loader):
+        device = torch.device(self.params['device'])
         model.eval()
         lossf = nn.BCEWithLogitsLoss()
         y_true, y_pred = [], []
