@@ -45,6 +45,10 @@ class MultiLogger():
         if self.do_wandb:
             wandb.log(logs)
 
+    def close(self):
+        if self.writer:
+            self.writer.close()
+
     @property
     def writer(self):
         if self.do_tb and not self._writer:
@@ -170,11 +174,12 @@ class Trainer():
                 logs = {'step': it}
                 logs['loss/valid'] = metrics['loss']
                 logs['spearmanr/valid'] = metrics['spearmanr']
+                logger.add_scalars(logs)
                 
                 print(f"rho: {metrics['spearmanr']:.4f} (val), loss: {metrics['loss']:.4f} (val)")
         
         early_stopping.restore()
-        writer.close()
+        logger.close()
     
     def evaluate(self, model, loader):
         device = torch.device(self.params['device'])
