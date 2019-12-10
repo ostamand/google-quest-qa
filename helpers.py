@@ -31,8 +31,8 @@ class EarlyStoppingSimple():
         self.model = model
         self.patience = patience
         
-        if not os.path.exists('.temp'):
-            os.mkdir('.temp')
+        if not os.path.exists('.tmp'):
+            os.mkdir('.tmp')
             
     def step(self, value):
         self._current_step += 1
@@ -40,7 +40,7 @@ class EarlyStoppingSimple():
             self.count = 0
             self._best_score = value
             self._best_step = self._current_step
-            torch.save(self.model, '.temp/best.pth')
+            torch.save(self.model.state_dict(), '.tmp/best.pth')
         else:
             if self.count >= self.patience:
                 self._training_done = True
@@ -50,7 +50,7 @@ class EarlyStoppingSimple():
     def restore(self):
         print(f"Best epoch: {self.best_step:.6f}. Best score: {self.best_score:.6f}")
         print("Restoring...")
-        self.model = torch.load('.temp/best.pth')
+        self.model.load_state_dict(torch.load('.tmp/best.pth'))
 
     @property 
     def training_done(self):
