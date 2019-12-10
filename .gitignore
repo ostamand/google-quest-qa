@@ -134,3 +134,4 @@ notebooks/
 .tmp/
 reference/
 .logs/
+wandb
