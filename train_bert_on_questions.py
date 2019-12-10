@@ -29,6 +29,10 @@ def apply_tokenizer(tokenizer, texts: List[str], maxlen) -> np.array:
         tokens[i, :len(text_tokens)] = text_tokens 
     return tokens
 
+"""
+example:
+python train_bert_on_questions.py --do_apex
+"""
 def main():
     # arguments
     parser = argparse.ArgumentParser()
@@ -75,15 +79,17 @@ def main():
     valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=args.bs, shuffle=False)
     loaders = {'train': train_loader, 'valid': valid_loader}
 
+    device = torch.device(args.device)
+
     # train head
     params = BertOnQuestions.default_params()
     params['fc_dp'] = 0.
     model = BertOnQuestions(len(targets_question), args.model_dir, **params)
+    model.to(device)
 
     model.train_head_only()
     optimizer = optim.Adam(model.optimizer_grouped_parameters, lr=1e-2)
-    device = torch.device(args.device)
-    model.to(device)
+
     if args.do_apex:
         model, optimizer = amp.initialize(model, optimizer, opt_level="O1", verbosity=0)
 
@@ -95,6 +101,21 @@ def main():
     del model
     gc.collect()
     torch.cuda.empty_cache()
+    
+    params = BertOnQuestions.default_params()
+    params['fc_dp'] = 0.2
+    model = BertOnQuestions(len(targets_question), args.model_dir, **params)
+    model.load_state_dict(torch.load('.tmp/best.pth'))
+    model.to(device)
+
+    model.train_all()
+    optimizer = optim.Adam(model.optimizer_grouped_parameters, lr=1e-4)
+
+    if args.do_apex:
+        model, optimizer = amp.initialize(model, optimizer, opt_level="O1", verbosity=0)
+
+    trainer = Trainer(**args.__dict__)
+    #trainer.train(model, loaders, optimizer, epochs=5, warmup=0.1, warmdown=0.1)
 
 if __name__ == '__main__':
     main()
