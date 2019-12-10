@@ -1,18 +1,25 @@
+import sys
+sys.path.insert(0, 'lib/transformers')
 import argparse
 import os
-import sys
 import gc
-sys.path.insert(0, 'lib/transformers')
+from typing import List
 
 import torch
 import torch.nn as nn
+import torch.optim as optim
 import transformers
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
+from apex import amp
 
 from constants import targets
 from modeling import BertOnQuestions
+from training import Trainer
+
+#TODO remove
+import pdb
 
 def apply_tokenizer(tokenizer, texts: List[str], maxlen) -> np.array:
     tokens = np.zeros((len(texts), maxlen), dtype=np.long)
@@ -27,9 +34,19 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs", default=1, type=int)
     parser.add_argument("--model_dir", default="model", type=str)
+    parser.add_argument("--data_dir", default="data", type=str)
+    parser.add_argument("--log_dir", default=".logs", type=str)
     parser.add_argument("--seed", default=42, type=int)
-    parser.add_argument("--bs", default=8, type=int)
+    parser.add_argument("--bs", default=32, type=int)
     parser.add_argument("--maxlen", default=512, type=int)
+    parser.add_argument("--device", default="cuda", type=str)
+    parser.add_argument("--do_apex", action='store_true')
+    parser.add_argument("--warmup", default=0.5, type=float)
+    parser.add_argument("--warmdown", default=0.5, type=float)
+    parser.add_argument("--clip", default=5.0, type=float)
+    parser.add_argument("--accumulation_steps", default=2, type=int)
+    # parser.add_argument("--do_head", action="store_true")
+    # parser.add_argument("--head_ckpt", default="", type=str)
 
     args = parser.parse_args()
 
@@ -58,19 +75,20 @@ def main():
     valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=args.bs, shuffle=False)
     loaders = {'train': train_loader, 'valid': valid_loader}
 
-    # train top fc layer
+    # train head
     params = BertOnQuestions.default_params()
     params['fc_dp'] = 0.
-    model = BertOnQuestions(len(targets_question), model_dir, **params)
+    model = BertOnQuestions(len(targets_question), args.model_dir, **params)
 
     model.train_head_only()
     optimizer = optim.Adam(model.optimizer_grouped_parameters, lr=1e-2)
-    device = torch.device('cuda')
+    device = torch.device(args.device)
     model.to(device)
-    model, optimizer = amp.initialize(model, optimizer, opt_level="O1", verbosity=0)
+    if args.do_apex:
+        model, optimizer = amp.initialize(model, optimizer, opt_level="O1", verbosity=0)
 
-    trainer = Trainer()
-    trainer.train(model, loaders, optimizer, epochs=20, warmup=0.5, warmdown=0.5, clip=5)
+    trainer = Trainer(**args.__dict__)
+    trainer.train(model, loaders, optimizer, epochs=20)
 
     # train all layers
     # TODO
