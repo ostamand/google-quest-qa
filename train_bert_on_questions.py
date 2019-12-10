@@ -36,7 +36,7 @@ python train_bert_on_questions.py --do_apex
 def main():
     # arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs", default=1, type=int)
+    parser.add_argument("--epochs", default=10, type=int)
     parser.add_argument("--model_dir", default="model", type=str)
     parser.add_argument("--data_dir", default="data", type=str)
     parser.add_argument("--log_dir", default=".logs", type=str)
@@ -98,7 +98,7 @@ def main():
         model, optimizer = amp.initialize(model, optimizer, opt_level="O1", verbosity=0)
 
     trainer = Trainer(**args.__dict__)
-    trainer.train(model, loaders, optimizer, epochs=15)
+    trainer.train(model, loaders, optimizer, epochs=args.epochs)
 
     # train all layers
     # TODO

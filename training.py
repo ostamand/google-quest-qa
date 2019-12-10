@@ -1,20 +1,14 @@
 import os
-from datetime import datetime
 
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
 from apex import amp
-import wandb
 
 from helpers import compute_spearmanr, set_seed, EarlyStoppingSimple
 from schedulers import LearningRateWithUpDown
-
-#TODO remove
-import pdb
     
 def get_max_gradient(params, norm=2):
     with torch.no_grad():
@@ -23,37 +17,6 @@ def get_max_gradient(params, norm=2):
             g = torch.norm(param.grad, norm).item()
             max_g = g if g > max_g else max_g
     return max_g
-
-class MultiLogger():
-    def __init__(self, model=None, log_dir='.logs', project=None, do_wandb=False, do_tb=False, **kwargs):
-        self.do_wandb, self.do_tb = do_wandb, do_tb
-        self.log_dir = log_dir
-
-        self._writer = None
-
-        if do_wandb:
-            wandb.init(project=project)
-            if model:
-                wandb.watch(model)
-
-    def add_scalars(self, logs):
-        step = logs['step']
-        logs = {k:v for k,v in logs.items() if k != 'step'}
-        if self.do_tb:
-            for k,v in logs.items():
-                self.writer.add_scalar(k, v, step)
-        if self.do_wandb:
-            wandb.log(logs)
-
-    def close(self):
-        if self.writer:
-            self.writer.close()
-
-    @property
-    def writer(self):
-        if self.do_tb and not self._writer:
-            self._writer = SummaryWriter(os.path.join(self.log_dir, datetime.now().strftime("%Y%m%d_%H%M%S")))
-        return self._writer
 
 class Trainer():
     """
@@ -98,6 +61,7 @@ class Trainer():
         it = 1 # global steps
 
         logger = MultiLogger(model, **p)
+        logger.update(p) # will save all configs
         
         scheduler = ReduceLROnPlateau(optimizer, 'max', patience=2, verbose=True, factor=0.1)
         early_stopping = EarlyStoppingSimple(model, patience=5, min_delta=0)  
