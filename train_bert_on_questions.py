@@ -36,7 +36,8 @@ python train_bert_on_questions.py --do_apex
 def main():
     # arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs", default=10, type=int)
+    parser.add_argument("--epochs1", default=20, type=int)
+    parser.add_argument("--epochs2", default=5, type=int)
     parser.add_argument("--model_dir", default="model", type=str)
     parser.add_argument("--data_dir", default="data", type=str)
     parser.add_argument("--log_dir", default=".logs", type=str)
@@ -53,7 +54,7 @@ def main():
     parser.add_argument("--accumulation_steps", default=2, type=int)
     parser.add_argument("--project", default="google-quest-qa", type=str)
     # parser.add_argument("--do_head", action="store_true")
-    # parser.add_argument("--head_ckpt", default="", type=str)
+    parser.add_argument("--head_ckpt", default=None, type=str)
 
     args = parser.parse_args()
 
@@ -98,7 +99,7 @@ def main():
         model, optimizer = amp.initialize(model, optimizer, opt_level="O1", verbosity=0)
 
     trainer = Trainer(**args.__dict__)
-    trainer.train(model, loaders, optimizer, epochs=args.epochs)
+    trainer.train(model, loaders, optimizer, epochs=args.epochs1)
 
     # train all layers
     # TODO
@@ -107,19 +108,23 @@ def main():
     torch.cuda.empty_cache()
     
     params = BertOnQuestions.default_params()
-    params['fc_dp'] = 0.2
+    params['fc_dp'] = 0.4
     model = BertOnQuestions(len(targets_question), args.model_dir, **params)
-    model.load_state_dict(torch.load('.tmp/best.pth'))
+
+    ckpt = args.head_ckpt if args.head_ckpt is not None else '.tmp/best.pth'
+    # TODO check if file exists
+    model.load_state_dict(torch.load(ckpt))
     model.to(device)
 
     model.train_all()
-    optimizer = optim.Adam(model.optimizer_grouped_parameters, lr=1e-4)
+    optimizer = optim.Adam(model.optimizer_grouped_parameters, lr=2e-5)
 
     if args.do_apex:
         model, optimizer = amp.initialize(model, optimizer, opt_level="O1", verbosity=0)
 
     trainer = Trainer(**args.__dict__)
-    #trainer.train(model, loaders, optimizer, epochs=5, warmup=0.1, warmdown=0.1)
+    # TODO change to transformer 
+    trainer.train(model, loaders, optimizer, epochs=args.epochs2, warmup=0.5, warmdown=0.5)
 
 if __name__ == '__main__':
     main()
