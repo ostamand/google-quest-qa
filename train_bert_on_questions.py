@@ -36,8 +36,8 @@ python train_bert_on_questions.py --do_apex
 def main():
     # arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs1", default=20, type=int)
-    parser.add_argument("--epochs2", default=5, type=int)
+    parser.add_argument("--epochs1", default=10, type=int)
+    parser.add_argument("--epochs2", default=10, type=int)
     parser.add_argument("--model_dir", default="model", type=str)
     parser.add_argument("--data_dir", default="data", type=str)
     parser.add_argument("--log_dir", default=".logs", type=str)
@@ -118,12 +118,13 @@ def main():
 
     model.train_all()
     optimizer = optim.Adam(model.optimizer_grouped_parameters, lr=2e-5)
+    #TODO check AdamW epsilon
+    #optimizer = transformers.AdamW(model.optimizer_grouped_parameters, lr=2e-5)
 
     if args.do_apex:
         model, optimizer = amp.initialize(model, optimizer, opt_level="O1", verbosity=0)
 
     trainer = Trainer(**args.__dict__)
-    # TODO change to transformer 
     trainer.train(model, loaders, optimizer, epochs=args.epochs2, warmup=0.5, warmdown=0.5)
 
 if __name__ == '__main__':

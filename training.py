@@ -180,5 +180,6 @@ class Trainer():
             'warmdown': 0.1,
             'do_apex': True,
             'do_wandb': False,
-            'do_tb': False
+            'do_tb': False, 
+            'project': None
         }

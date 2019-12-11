@@ -18,7 +18,7 @@ class MultiLogger():
 
     def update(self, configs):
         if self.do_wandb:
-            wandb.config.update(configs)
+            wandb.config.update(configs, allow_val_change=True)
 
     def add_scalars(self, logs):
         step = logs['step']
