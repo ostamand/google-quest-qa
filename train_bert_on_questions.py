@@ -37,12 +37,13 @@ def main():
     # arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs1", default=10, type=int)
-    parser.add_argument("--epochs2", default=10, type=int)
+    parser.add_argument("--epochs2", default=5, type=int)
     parser.add_argument("--model_dir", default="model", type=str)
     parser.add_argument("--data_dir", default="data", type=str)
     parser.add_argument("--log_dir", default=".logs", type=str)
     parser.add_argument("--seed", default=42, type=int)
     parser.add_argument("--bs", default=32, type=int)
+    parser.add_argument("--dp", default=0.4, type=float)
     parser.add_argument("--maxlen", default=512, type=int)
     parser.add_argument("--device", default="cuda", type=str)
     parser.add_argument("--do_apex", action='store_true')
@@ -108,7 +109,7 @@ def main():
     torch.cuda.empty_cache()
     
     params = BertOnQuestions.default_params()
-    params['fc_dp'] = 0.4
+    params['fc_dp'] = args.dp
     model = BertOnQuestions(len(targets_question), args.model_dir, **params)
 
     ckpt = args.head_ckpt if args.head_ckpt is not None else '.tmp/best.pth'
@@ -117,9 +118,9 @@ def main():
     model.to(device)
 
     model.train_all()
-    optimizer = optim.Adam(model.optimizer_grouped_parameters, lr=2e-5)
+    ##optimizer = optim.Adam(model.optimizer_grouped_parameters, lr=2e-5)
     #TODO check AdamW epsilon
-    #optimizer = transformers.AdamW(model.optimizer_grouped_parameters, lr=2e-5)
+    optimizer = transformers.AdamW(model.optimizer_grouped_parameters, lr=2e-5)
 
     if args.do_apex:
         model, optimizer = amp.initialize(model, optimizer, opt_level="O1", verbosity=0)
