@@ -1,15 +1,7 @@
 import os
-
 import random 
 import numpy as np
-import torch
 from scipy.stats import spearmanr
-
-def set_seed(seed):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    os.environ['PYTHONHASHSEED']=str(seed)
 
 def compute_spearmanr(trues, preds):
     rhos = []
