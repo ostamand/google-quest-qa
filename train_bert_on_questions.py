@@ -1,5 +1,5 @@
-import sys
-sys.path.insert(0, 'lib/transformers')
+#import sys
+#sys.path.insert(0, 'lib/transformers')
 import argparse
 import os
 import gc
@@ -18,9 +18,6 @@ from constants import targets
 from modeling import BertOnQuestions
 from training import Trainer
 
-#TODO remove
-import pdb
-
 def apply_tokenizer(tokenizer, texts: List[str], maxlen) -> np.array:
     tokens = np.zeros((len(texts), maxlen), dtype=np.long)
     for i, text in enumerate(texts):
@@ -33,32 +30,7 @@ def apply_tokenizer(tokenizer, texts: List[str], maxlen) -> np.array:
 example:
 python train_bert_on_questions.py --do_apex
 """
-def main():
-    # arguments
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs1", default=10, type=int)
-    parser.add_argument("--epochs2", default=5, type=int)
-    parser.add_argument("--model_dir", default="model", type=str)
-    parser.add_argument("--data_dir", default="data", type=str)
-    parser.add_argument("--log_dir", default=".logs", type=str)
-    parser.add_argument("--seed", default=42, type=int)
-    parser.add_argument("--bs", default=32, type=int)
-    parser.add_argument("--dp", default=0.4, type=float)
-    parser.add_argument("--maxlen", default=512, type=int)
-    parser.add_argument("--device", default="cuda", type=str)
-    parser.add_argument("--do_apex", action='store_true')
-    parser.add_argument("--do_wandb", action='store_true')
-    parser.add_argument("--do_tb", action='store_true')
-    parser.add_argument("--warmup", default=0.5, type=float)
-    parser.add_argument("--warmdown", default=0.5, type=float)
-    parser.add_argument("--clip", default=10.0, type=float)
-    parser.add_argument("--accumulation_steps", default=2, type=int)
-    parser.add_argument("--project", default="google-quest-qa", type=str)
-    # parser.add_argument("--do_head", action="store_true")
-    parser.add_argument("--head_ckpt", default=None, type=str)
-
-    args = parser.parse_args()
-
+def main(**args):
     # data
     targets_question = [x for x in targets if x.startswith('question')]
     train_df = pd.read_csv(os.path.join(args.data_dir, 'train.csv'))
@@ -68,7 +40,11 @@ def main():
     tokenizer = transformers.BertTokenizer.from_pretrained(os.path.join(args.model_dir, 'bert-base-uncased'))
     tokens =  apply_tokenizer(tokenizer, texts, args.maxlen)
 
-    x_train, x_valid, y_train, y_valid = train_test_split(tokens, labels, random_state=args.seed, test_size=0.1)
+    x_train = tokens[args.train_ids]
+    y_train = labels[args.train_ids]
+
+    x_valid = tokens[args.valid_ids]
+    y_valid = labels[args.valid_ids]
 
     train_dataset = torch.utils.data.TensorDataset(
         torch.tensor(x_train, dtype=torch.long), 
@@ -87,6 +63,7 @@ def main():
     device = torch.device(args.device)
 
     # train head
+
     params = BertOnQuestions.default_params()
     params['fc_dp'] = 0.
     model = BertOnQuestions(len(targets_question), args.model_dir, **params)
@@ -103,7 +80,7 @@ def main():
     trainer.train(model, loaders, optimizer, epochs=args.epochs1)
 
     # train all layers
-    # TODO
+
     del model
     gc.collect()
     torch.cuda.empty_cache()
@@ -118,8 +95,6 @@ def main():
     model.to(device)
 
     model.train_all()
-    ##optimizer = optim.Adam(model.optimizer_grouped_parameters, lr=2e-5)
-    #TODO check AdamW epsilon
     optimizer = transformers.AdamW(model.optimizer_grouped_parameters, lr=2e-5)
 
     if args.do_apex:
@@ -129,4 +104,29 @@ def main():
     trainer.train(model, loaders, optimizer, epochs=args.epochs2, warmup=0.5, warmdown=0.5)
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--epochs1", default=10, type=int)
+    parser.add_argument("--epochs2", default=5, type=int)
+    parser.add_argument("--model_dir", default="model", type=str)
+    parser.add_argument("--data_dir", default="data", type=str)
+    parser.add_argument("--train_ids", default="train_ids_fold_0.csv", type=str)
+    parser.add_argument("--valid_ids", default="valid_ids_fold_0.csv", type=str)
+    parser.add_argument("--log_dir", default=".logs", type=str)
+    parser.add_argument("--seed", default=42, type=int)
+    parser.add_argument("--bs", default=32, type=int)
+    parser.add_argument("--dp", default=0.4, type=float)
+    parser.add_argument("--maxlen", default=512, type=int)
+    parser.add_argument("--device", default="cuda", type=str)
+    parser.add_argument("--do_apex", action='store_true')
+    parser.add_argument("--do_wandb", action='store_true')
+    parser.add_argument("--do_tb", action='store_true')
+    parser.add_argument("--warmup", default=0.5, type=float)
+    parser.add_argument("--warmdown", default=0.5, type=float)
+    parser.add_argument("--clip", default=10.0, type=float)
+    parser.add_argument("--accumulation_steps", default=2, type=int)
+    parser.add_argument("--project", default="google-quest-qa", type=str)
+    parser.add_argument("--head_ckpt", default=None, type=str)
+    
+    args = parser.parse_args()
+
+    main(args.__dict__)
