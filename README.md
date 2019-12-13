@@ -8,7 +8,6 @@ Port forward on local machine for jupyter notebook.
 ssh -N -L 8080:localhost:8080 home
 ```
 
-
 ### Keras Mixed Precision 
 
 Reference: [link](https://docs.nvidia.com/deeplearning/sdk/mixed-precision-training/index.html)

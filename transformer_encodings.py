@@ -27,6 +27,7 @@ def get_features(model, tokenizer, maxlen, texts):
     
     inputs = tf.keras.layers.Input(shape=(maxlen), dtype=tf.int32)
     x = model(inputs)[0][:,0,:]
+    # TODO check if better after next tanh layer
     
     pooled = tf.keras.Model(inputs=inputs, outputs=x)
     
