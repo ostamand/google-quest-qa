@@ -12,3 +12,4 @@ sacremoses
 tensorboard
 fire
 wandb
+torch
