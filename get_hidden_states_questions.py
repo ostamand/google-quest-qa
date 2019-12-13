@@ -57,10 +57,11 @@ def main():
         with torch.no_grad():
             _ = model(x_batch[0].to(device))
 
+    global features
     features = np.vstack(features)
-
     np.save(args.out_file, features)
 
-# example: python3 get_hidden_states_questions.py --ckpt_path model/bert_q_3956.pth --out_file features/train_q_3956.npy --in_file data/train.csv 
+# train data: python3 get_hidden_states_questions.py --ckpt_path model/bert_q_3956.pth --out_file features/train_q_3956.npy --in_file data/train.csv 
+# tests data: python3 get_hidden_states_questions.py --ckpt_path model/bert_q_3956.pth --out_file features/test_q_3956.npy --in_file data/test.csv 
 if __name__ == '__main__':
     main()
