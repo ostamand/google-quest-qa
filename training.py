@@ -7,7 +7,8 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
 from apex import amp
 
-from helpers import compute_spearmanr, set_seed, EarlyStoppingSimple
+from helpers_torch import set_seed
+from helpers import compute_spearmanr, EarlyStoppingSimple
 from schedulers import LearningRateWithUpDown
 from loggers import MultiLogger
     
