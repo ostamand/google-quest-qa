@@ -135,3 +135,5 @@ notebooks/
 reference/
 .logs/
 wandb
+.vscode
+features
