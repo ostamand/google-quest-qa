@@ -1,1 +1,0 @@
-docker run -v $(pwd):/workspace -p 8080:8080 --gpus all -it google-quest-qa-pytorch bash
