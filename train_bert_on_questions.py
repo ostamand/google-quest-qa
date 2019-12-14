@@ -109,20 +109,21 @@ def main(**args):
 
     # save trained model and features
 
-    out_dir = os.path.join(args['model_dir'], f"bert_questions_fold_{args['fold']}")
+    out_dir = os.path.join(args['model_dir'], f"{args['out_dir']}_fold_{args['fold']}")
     if not os.path.exists(out_dir):
         os.mkdir(out_dir)
 
     torch.save(model.state_dict(), os.path.join(out_dir, 'model_state_dict.pth'))
     torch.save(args, os.path.join(out_dir, 'training_args.bin'))
 
-# example: python train_bert_on_questions.py --do_apex --do_wandb --maxlen 256 --bs 8 --dp 0.1 --fold 0
-# trained model will be saved to model/bert_questions_fold_0
+# example: python train_bert_on_questions.py --do_apex --do_wandb --maxlen 256 --bs 8 --dp 0.1 --fold 0 --out_dir test
+# trained model will be saved to model/test_fold_0
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs1", default=10, type=int)
     parser.add_argument("--epochs2", default=5, type=int)
     parser.add_argument("--model_dir", default="model", type=str)
+    parser.add_argument("--out_dir", default="bert_questions", type=str)
     parser.add_argument("--data_dir", default="data", type=str)
     parser.add_argument("--fold", default=0, type=int)
     parser.add_argument("--log_dir", default=".logs", type=str)
