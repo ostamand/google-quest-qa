@@ -62,7 +62,7 @@ class Trainer():
         acc_loss = 0
         it = 1 # global steps
 
-        logger = MultiLogger(model, **p)
+        logger = MultiLogger(**p)
         logger.update(p) # will save all configs
         
         scheduler = ReduceLROnPlateau(optimizer, 'max', patience=2, verbose=True, factor=0.1)
@@ -181,6 +181,7 @@ class Trainer():
             'warmdown': 0.1,
             'do_apex': True,
             'do_wandb': False,
+            'watch': False,
             'do_tb': False, 
             'project': None
         }

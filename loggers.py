@@ -5,14 +5,10 @@ import wandb
 from torch.utils.tensorboard import SummaryWriter
 
 class MultiLogger():
-    def __init__(self, log_dir='.logs', project=None, do_wandb=False, do_tb=False, **kwargs):
+    def __init__(self, model=None, log_dir='.logs', project=None, do_wandb=False, do_tb=False, **kwargs):
         self.do_wandb, self.do_tb = do_wandb, do_tb
         self.log_dir = log_dir
-
         self._writer = None
-
-        if do_wandb:
-            wandb.init(project=project)
 
     def update(self, configs):
         if self.do_wandb:

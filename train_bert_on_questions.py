@@ -75,6 +75,7 @@ def main(**args):
     model.to(device)
 
     if args['do_wandb']:
+        wandb.init(project=args['project'])
         wandb.watch(model)
     
     optimizer = optim.Adam(model.optimizer_grouped_parameters, lr=1e-2)
