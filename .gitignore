@@ -139,3 +139,5 @@ wandb
 features
 
 .devcontainer
+
+.DS_store
