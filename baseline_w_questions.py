@@ -33,7 +33,7 @@ def get_model(input_size, output_size):
 
 class Baseline():
 
-    def __init__(self, params, data=None):
+    def __init__(self, params):
         self.params = params
         self.features = None
 
@@ -110,8 +110,7 @@ class Baseline():
         for fold_n in range(5):
             self.calculate_features(data, fold_n)
 
-             x = {}
-
+            x = {}
             for k,v in self.features.items():
                 f = self.features[k]
                 x[k] = np.hstack([
@@ -175,7 +174,18 @@ class Baseline():
             'maxlen': 512, 
             'seed': 42,
             'epochs': 100, 
-            'bs': 32, 
-            'n_splits': 5
+            'bs': 32
         }
         return params
+
+if __name__ == '__main__':
+    params = Baseline.default_params()
+
+    train_df = pd.read_csv('data/train.csv')
+    test_df = pd.read_csv('data/test.csv')
+
+    data = {'train': train_df, 'test': test_df}
+
+    model = Baseline(params)
+
+    model.train(data)
