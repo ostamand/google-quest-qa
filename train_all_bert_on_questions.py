@@ -8,7 +8,7 @@ def main():
         "data_dir": "data",
         "fold": 0,
         "log_dir": ".logs",
-        "seed": 43, 
+        "seed": 42, 
         "bs": 8,
         "dp": 0.1, 
         "maxlen": 256,
