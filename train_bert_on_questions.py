@@ -1,5 +1,3 @@
-#import sys
-#sys.path.insert(0, 'lib/transformers')
 import argparse
 import os
 import gc
@@ -33,18 +31,21 @@ python train_bert_on_questions.py --do_apex
 def main(**args):
     # data
     targets_question = [x for x in targets if x.startswith('question')]
-    train_df = pd.read_csv(os.path.join(args.data_dir, 'train.csv'))
+    train_df = pd.read_csv(os.path.join(args['data_dir'], 'train.csv'))
     texts = train_df.question_body.values
     labels = train_df[targets_question].values.astype(np.float32)
 
-    tokenizer = transformers.BertTokenizer.from_pretrained(os.path.join(args.model_dir, 'bert-base-uncased'))
-    tokens =  apply_tokenizer(tokenizer, texts, args.maxlen)
+    tokenizer = transformers.BertTokenizer.from_pretrained(os.path.join(args['model_dir'], 'bert-base-uncased'))
+    tokens =  apply_tokenizer(tokenizer, texts, args['maxlen'])
 
-    x_train = tokens[args.train_ids]
-    y_train = labels[args.train_ids]
+    tr_ids = pd.read_csv(os.path.join(args['data_dir'], f"train_ids_fold_{args['fold']}.csv"))['ids'].values
+    val_ids = pd.read_csv(os.path.join(args['data_dir'], f"valid_ids_fold_{args['fold']}.csv"))['ids'].values
 
-    x_valid = tokens[args.valid_ids]
-    y_valid = labels[args.valid_ids]
+    x_train = tokens[tr_ids]
+    y_train = labels[tr_ids]
+
+    x_valid = tokens[valid_ids]
+    y_valid = labels[valid_ids]
 
     train_dataset = torch.utils.data.TensorDataset(
         torch.tensor(x_train, dtype=torch.long), 
@@ -56,28 +57,28 @@ def main(**args):
         torch.tensor(y_valid, dtype=torch.float32)
     )
 
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.bs, shuffle=True)
-    valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=args.bs, shuffle=False)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args['bs'], shuffle=True)
+    valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=args['bs'], shuffle=False)
     loaders = {'train': train_loader, 'valid': valid_loader}
 
-    device = torch.device(args.device)
+    device = torch.device(args['device'])
 
     # train head
 
     params = BertOnQuestions.default_params()
     params['fc_dp'] = 0.
-    model = BertOnQuestions(len(targets_question), args.model_dir, **params)
+    model = BertOnQuestions(len(targets_question), args['model_dir'], **params)
     model.train_head_only()
     model.to(device)
     
     optimizer = optim.Adam(model.optimizer_grouped_parameters, lr=1e-2)
 
-    if args.do_apex:
+    if args['do_apex']:
         # TODO tru O2
         model, optimizer = amp.initialize(model, optimizer, opt_level="O1", verbosity=0)
 
-    trainer = Trainer(**args.__dict__)
-    trainer.train(model, loaders, optimizer, epochs=args.epochs1)
+    trainer = Trainer(**args)
+    trainer.train(model, loaders, optimizer, epochs=args['epochs1'])
 
     # train all layers
 
@@ -86,10 +87,10 @@ def main(**args):
     torch.cuda.empty_cache()
     
     params = BertOnQuestions.default_params()
-    params['fc_dp'] = args.dp
-    model = BertOnQuestions(len(targets_question), args.model_dir, **params)
+    params['fc_dp'] = args['dp']
+    model = BertOnQuestions(len(targets_question), args['model_dir'], **params)
 
-    ckpt = args.head_ckpt if args.head_ckpt is not None else '.tmp/best.pth'
+    ckpt = args['head_ckpt'] if args['head_ckpt'] is not None else '.tmp/best.pth'
     # TODO check if file exists
     model.load_state_dict(torch.load(ckpt))
     model.to(device)
@@ -97,20 +98,30 @@ def main(**args):
     model.train_all()
     optimizer = transformers.AdamW(model.optimizer_grouped_parameters, lr=2e-5)
 
-    if args.do_apex:
+    if args['do_apex']:
         model, optimizer = amp.initialize(model, optimizer, opt_level="O1", verbosity=0)
 
-    trainer = Trainer(**args.__dict__)
-    trainer.train(model, loaders, optimizer, epochs=args.epochs2, warmup=0.5, warmdown=0.5)
+    trainer = Trainer(**args)
+    trainer.train(model, loaders, optimizer, epochs=args['epochs2'], warmup=0.5, warmdown=0.5)
 
+    # save trained model and features
+
+    out_dir = os.path.join(args['model_dir'], f"bert_questions_fold_{args['fold']}")
+    if not os.path.exists(out_dir):
+        os.mkdir(out_dir)
+
+    torch.save(model.state_dict(), os.path.join(out_dir, 'model_state_dict.pth'))
+    torch.save(args, os.path.join(out_dir, 'training_args.bin'))
+
+# example: python train_bert_on_questions.py --do_apex --do_wandb --maxlen 256 --bs 8 --dp 0.1 --fold 0
+# trained model will be saved to model/bert_questions_fold_0
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs1", default=10, type=int)
     parser.add_argument("--epochs2", default=5, type=int)
     parser.add_argument("--model_dir", default="model", type=str)
     parser.add_argument("--data_dir", default="data", type=str)
-    parser.add_argument("--train_ids", default="train_ids_fold_0.csv", type=str)
-    parser.add_argument("--valid_ids", default="valid_ids_fold_0.csv", type=str)
+    parser.add_argument("--fold", default=0, type=int)
     parser.add_argument("--log_dir", default=".logs", type=str)
     parser.add_argument("--seed", default=42, type=int)
     parser.add_argument("--bs", default=32, type=int)
@@ -129,4 +140,4 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
 
-    main(args.__dict__)
+    main(**args.__dict__)
