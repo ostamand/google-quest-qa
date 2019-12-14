@@ -79,7 +79,6 @@ def main(**args):
         wandb.watch(model)
     
     optimizer = transformers.AdamW(model.optimizer_grouped_parameters, lr=1e-2)
-    #optimizer = optim.Adam(model.optimizer_grouped_parameters, lr=1e-2)
 
     if args['do_apex']:
         # TODO tru O2
@@ -90,29 +89,11 @@ def main(**args):
 
     # train all layers
 
-    #del model
-    #gc.collect()
-    #torch.cuda.empty_cache()
-    
-    #params = BertOnQuestions.default_params()
-    #params['fc_dp'] = args['dp']
     model.pooled_dp.p = args['dp']
-    #model = BertOnQuestions(len(targets_question), args['model_dir'], **params)
-
-    ckpt = args['head_ckpt'] if args['head_ckpt'] is not None else '.tmp/best.pth'
-    # TODO check if file exists
-    #model.load_state_dict(torch.load(ckpt))
-    #model.to(device)
-
     model.train_all()
-    
+
     for param_group in optimizer.param_groups:
         param_group['lr'] = 2e-5
-
-    #optimizer = transformers.AdamW(model.optimizer_grouped_parameters, lr=2e-5)
-
-    #if args['do_apex']:
-    #    model, optimizer = amp.initialize(model, optimizer, opt_level="O1", verbosity=0)
 
     trainer = Trainer(**args)
     trainer.train(model, loaders, optimizer, epochs=args['epochs2'], warmup=0.5, warmdown=0.5)
