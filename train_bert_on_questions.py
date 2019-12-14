@@ -72,6 +72,9 @@ def main(**args):
     model = BertOnQuestions(len(targets_question), args['model_dir'], **params)
     model.train_head_only()
     model.to(device)
+
+    if args['do_wandb']:
+        wandb.watch(model)
     
     optimizer = optim.Adam(model.optimizer_grouped_parameters, lr=1e-2)
 
