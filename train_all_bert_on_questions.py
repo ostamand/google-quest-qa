@@ -25,7 +25,7 @@ def main():
     }
     for i in range(5):
         params['fold'] = i
-        train(params)
+        train(**params)
 
 if __name__ == "__main__":
     pass
