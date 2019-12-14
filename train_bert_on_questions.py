@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from apex import amp
+from knockknock import email_sender
 
 from constants import targets
 from modeling import BertOnQuestions
@@ -28,6 +29,7 @@ def apply_tokenizer(tokenizer, texts: List[str], maxlen) -> np.array:
 example:
 python train_bert_on_questions.py --do_apex
 """
+@email_sender(recipient_emails=["olivier.st.amand.1@gmail.com"], sender_email="yellow.bhaji@gmail.com")
 def main(**args):
     # data
     targets_question = [x for x in targets if x.startswith('question')]
