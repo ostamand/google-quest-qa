@@ -28,4 +28,4 @@ def main():
         train(**params)
 
 if __name__ == "__main__":
-    pass
+    main()
