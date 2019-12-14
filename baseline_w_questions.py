@@ -19,6 +19,7 @@ from transformer_encodings import get_features
 from constants import text_columns, targets
 from helpers_tf import go_deterministic
 from callbacks import SpearmanrCallback
+from get_hidden_states_questions import run as calculate_q_hidden_states
 
 import pdb
 
@@ -35,100 +36,104 @@ class Baseline():
     def __init__(self, params, data=None):
         self.params = params
         self.features = None
-        self.data = data  
 
     def _get_distilbert_hidden_states(self, model, tokenizer, df):
         answer = get_features(model, tokenizer, self.params['maxlen'], df.answer.values)
         question_title = get_features(model, tokenizer, self.params['maxlen'], df.question_title.values)
         return np.hstack([question_title, answer])
 
-    def load_features(self, path=None):
-        path = path if path else self.params['temp_dir'] / 'features_w_questions.pickle'
-        with open(path, 'rb') as f:
-            self.features = pickle.load(f)
+    @property 
+    def model_dir(self):
+        return self.params['model_dir']
 
-    def calculate_features(self, data: Dict[str, pd.DataFrame], question_hiddens: Dict[str, np.array], save=False):
-        self.data = data
-        self.features = {k: {} for k,v in data.items()}
-
-        model_dir = self.params['model_dir']
+    # calculate_features(data, 0)
+    # everything that can be cached is.
+    def calculate_features(self, data: Dict[str, pd.DataFrame], fold_n: int):
+        self.features = {k: {} for k,v in data.items()} if self.features is None else self.features
 
         K.clear_session()
 
         # bert question hidden states
 
-        for k, v in question_hiddens.items():
-            self.features[k]['question_hiddens'] = v
-
+        for k, v in data.items():
+            self.features[k]['question_hiddens']  = calculate_q_hidden_states(
+                v, 
+                self.model_dir, 
+                self.model_dir / f"bert_questions_fold_{fold_n}" / 'model_state_dict.pth'
+            )
+            
         # distilbert hidden states
 
-        bert = transformers.TFDistilBertModel.from_pretrained(model_dir / 'distilbert-base-uncased')
-        bert.compile(loss='binary_crossentropy')
+        if 'distilbert_hidden_states' not in self.features[data.keys()[0]]:
+            bert = transformers.TFDistilBertModel.from_pretrained(self.model_dir / 'distilbert-base-uncased')
+            bert.compile(loss='binary_crossentropy')
 
-        tokenizer = transformers.DistilBertTokenizer.from_pretrained(model_dir / 'distilbert-base-uncased')
+            tokenizer = transformers.DistilBertTokenizer.from_pretrained(self.model_dir / 'distilbert-base-uncased')
 
-        
-        for k,v in data.items():
-            self.features[k]['distilbert_hidden_states'] = self._get_distilbert_hidden_states(bert, tokenizer, v)
+            for k,v in data.items():
+                self.features[k]['distilbert_hidden_states'] = self._get_distilbert_hidden_states(bert, tokenizer, v)
+
+            K.clear_session()
 
         # universal sentence encoder
 
-        K.clear_session()
+        if 'sentence_embeds' not in self.features[data.keys()[0]]:
+            embed = hub.load(str(self.model_dir / 'universal-sentence-encoder-large-5'))
 
-        embed = hub.load(str(model_dir / 'universal-sentence-encoder-large-5'))
-
-        for k,v in data.items():
-            embeddings = embeddings_from_col(v, text_columns, embed)
-            self.features[k]['sentence_embeds'] = np.hstack([embed for i, embed in embeddings.items()])
-            self.features[k]['sentence_embeds_dist'] = get_dist_features(embeddings)
+            for k,v in data.items():
+                embeddings = embeddings_from_col(v, text_columns, embed)
+                self.features[k]['sentence_embeds'] = np.hstack([embed for i, embed in embeddings.items()])
+                self.features[k]['sentence_embeds_dist'] = get_dist_features(embeddings)
 
         # category
 
-        enc = OneHotEncoder(handle_unknown='ignore')
+        if 'category' not in self.features[data.keys()[0]]:
+            enc = OneHotEncoder(handle_unknown='ignore')
 
-        find = re.compile(r"^[^.]*")
-        data['train']['netloc'] = data['train']['url'].apply(lambda x: re.findall(find, urlparse(x).netloc)[0])
+            find = re.compile(r"^[^.]*")
+            data['train']['netloc'] = data['train']['url'].apply(lambda x: re.findall(find, urlparse(x).netloc)[0])
 
-        enc.fit(data['train'][['category', 'netloc']].values)
+            enc.fit(data['train'][['category', 'netloc']].values)
 
-        for k,v in data.items():
-            data[k]['netloc'] = data['train']['url'].apply(lambda x: re.findall(find, urlparse(x).netloc)[0])
-            self.features[k]['category'] = enc.transform(data[k][['category', 'netloc']].values).toarray()
+            for k,v in data.items():
+                data[k]['netloc'] = data['train']['url'].apply(lambda x: re.findall(find, urlparse(x).netloc)[0])
+                self.features[k]['category'] = enc.transform(data[k][['category', 'netloc']].values).toarray()
 
-        # save
-        if save:
-            with open(self.params['temp_dir'] / 'features_w_questions.pickle', 'wb') as f:
-                pickle.dump(self.features, f)
+    def predict(self, df):
+        pass
 
-    def train(self):
-        x = {}
-
-        for k,v in self.features.items():
-            f = self.features[k]
-            x[k] = np.hstack([
-                f['sentence_embeds'], 
-                f['category'],
-                f['sentence_embeds_dist'], 
-                f['question_hiddens'],
-                f['distilbert_hidden_states']
-            ])
-        
-        y_train = self.data['train'][targets].values
-        x_train = x['train']
-        x_test = x['test'] if 'test' in x else None
-
+    # to speed uo things can do training and inference at the same time 
+    def train(self, data: Dict[str, pd.DataFrame], out_dir='baseline_w_questions'):
         rhos = []
         test_preds = []
-        models = []
 
-        kf = KFold(n_splits=self.params['n_splits'], random_state=self.params['seed'], shuffle=True)
+        for fold_n in range(5):
+            self.calculate_features(data, fold_n)
 
-        for i, (tr, val) in enumerate(kf.split(x_train)):
-            x_tr = x_train[tr]
-            x_vl = x_train[val]
+             x = {}
+
+            for k,v in self.features.items():
+                f = self.features[k]
+                x[k] = np.hstack([
+                    f['sentence_embeds'], 
+                    f['category'],
+                    f['sentence_embeds_dist'], 
+                    f['question_hiddens'],
+                    f['distilbert_hidden_states']
+                ])
+            
+            y_train = self.data['train'][targets].values
+            x_train = x['train']
+            x_test = x['test'] if 'test' in x else None
+
+            tr_ids = pd.read_csv(os.path.join('data', f"train_ids_fold_{fold_n}.csv"))['ids'].values
+            val_ids = pd.read_csv(os.path.join('data', f"valid_ids_fold_{fold_n}.csv"))['ids'].values
+
+            x_tr = x_train[tr_ids]
+            x_vl = x_train[val_ids]
     
-            y_tr = y_train[tr]
-            y_vl = y_train[val]
+            y_tr = y_train[tr_ids]
+            y_vl = y_train[val_ids]
 
             K.clear_session()
             go_deterministic(self.params['seed'])
@@ -153,8 +158,9 @@ class Baseline():
                 callbacks=[cb]
             )
 
+            model.save_weights(str(self.model_dir / out_dir / f"best_weights_fold_{fold_n}.h5"))
+
             rhos.append(cb.best_rho)
-            models.append(model)
 
             if x_test is not None:
                 test_preds.append(model.predict(x_test))
