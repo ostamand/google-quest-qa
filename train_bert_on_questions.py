@@ -78,7 +78,8 @@ def main(**args):
         wandb.init(project=args['project'])
         wandb.watch(model)
     
-    optimizer = optim.Adam(model.optimizer_grouped_parameters, lr=1e-2)
+    optimizer = transformers.AdamW(model.optimizer_grouped_parameters, lr=1e-2)
+    #optimizer = optim.Adam(model.optimizer_grouped_parameters, lr=1e-2)
 
     if args['do_apex']:
         # TODO tru O2
@@ -104,7 +105,11 @@ def main(**args):
     #model.to(device)
 
     model.train_all()
-    optimizer = transformers.AdamW(model.optimizer_grouped_parameters, lr=2e-5)
+    
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = 2e-5
+
+    #optimizer = transformers.AdamW(model.optimizer_grouped_parameters, lr=2e-5)
 
     #if args['do_apex']:
     #    model, optimizer = amp.initialize(model, optimizer, opt_level="O1", verbosity=0)
