@@ -44,8 +44,8 @@ def main(**args):
     x_train = tokens[tr_ids]
     y_train = labels[tr_ids]
 
-    x_valid = tokens[valid_ids]
-    y_valid = labels[valid_ids]
+    x_valid = tokens[val_ids]
+    y_valid = labels[val_ids]
 
     train_dataset = torch.utils.data.TensorDataset(
         torch.tensor(x_train, dtype=torch.long), 
