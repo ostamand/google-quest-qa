@@ -13,16 +13,19 @@ from modeling import BertOnQuestions
 features = []
 
 def extract_pooled(self, input, output):
-    #global features
+    global features
     _, pooled = output
     features.append(pooled.detach().cpu().numpy())
 
 def run(df, model_dir, ckpt_path, bs=8, device='cuda'):
+    global features
+    features = []
+
     targets_question = [x for x in targets if x.startswith('question')]
     texts = df.question_body.values
 
     tokenizer = transformers.BertTokenizer.from_pretrained(os.path.join(model_dir, 'bert-base-uncased'))
-    tokens =  apply_tokenizer(tokenizer, texts, 256)
+    tokens = apply_tokenizer(tokenizer, texts, 256)
 
     # TODO params should have been saved along with checkpoint
     model = BertOnQuestions(len(targets_question), model_dir, **{"fc_wd": 0., "fc_dp": 0., "bert_wd": 0})
@@ -43,7 +46,6 @@ def run(df, model_dir, ckpt_path, bs=8, device='cuda'):
         with torch.no_grad():
             _ = model(x_batch[0].to(device))
 
-    global features
     features = np.vstack(features)
 
     del model 
