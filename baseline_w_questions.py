@@ -4,6 +4,7 @@ from typing import Dict
 from urllib.parse import urlparse
 import re
 import pickle
+import os
 
 import tensorflow as tf
 import tensorflow.keras.backend as K
@@ -48,13 +49,16 @@ class Baseline():
 
     # calculate_features(data, 0)
     # everything that can be cached is.
-    def calculate_features(self, data: Dict[str, pd.DataFrame], fold_n: int):
-        self.features = {k: {} for k,v in data.items()} if self.features is None else self.features
+    def calculate_features(self, data: Dict[str, pd.DataFrame], fold_n: int, save_features=True, **kwargs):
+        # will re-use calculated stuff if called more than once
+        if self.features is None:
+            self.features = {k: {} for k,v in data.items()} if self.features is None else self.features
 
         K.clear_session()
 
         # bert question hidden states
 
+        print('Calculating question body hidden states...')
         for k, v in data.items():
             self.features[k]['question_hiddens']  = calculate_q_hidden_states(
                 v, 
@@ -64,7 +68,8 @@ class Baseline():
             
         # distilbert hidden states
 
-        if 'distilbert_hidden_states' not in self.features[data.keys()[0]]:
+        if 'distilbert_hidden_states' not in self.features[[*self.features][0]]:
+            print('Calculating Distilbert hidden states...')
             bert = transformers.TFDistilBertModel.from_pretrained(self.model_dir / 'distilbert-base-uncased')
             bert.compile(loss='binary_crossentropy')
 
@@ -77,7 +82,8 @@ class Baseline():
 
         # universal sentence encoder
 
-        if 'sentence_embeds' not in self.features[data.keys()[0]]:
+        if 'sentence_embeds' not in self.features[[*self.features][0]]:
+            print('Calculating universal sentence embeddings...')
             embed = hub.load(str(self.model_dir / 'universal-sentence-encoder-large-5'))
 
             for k,v in data.items():
@@ -87,7 +93,8 @@ class Baseline():
 
         # category
 
-        if 'category' not in self.features[data.keys()[0]]:
+        if 'category' not in self.features[[*self.features][0]]:
+            print('Calculating categorical features...')
             enc = OneHotEncoder(handle_unknown='ignore')
 
             find = re.compile(r"^[^.]*")
@@ -99,16 +106,24 @@ class Baseline():
                 data[k]['netloc'] = data['train']['url'].apply(lambda x: re.findall(find, urlparse(x).netloc)[0])
                 self.features[k]['category'] = enc.transform(data[k][['category', 'netloc']].values).toarray()
 
+        if save_features:
+            with open(params['temp_dir'] / 'features.pickle', 'wb') as f:
+                pickle.dump(self.features, f)
+
+    def load_features(self):
+        with open(params['temp_dir'] / 'features.pickle', 'rb') as f:
+            self.features = pickle.load(f)
+
     def predict(self, df):
         pass
 
     # to speed uo things can do training and inference at the same time 
-    def train(self, data: Dict[str, pd.DataFrame], out_dir='baseline_w_questions'):
+    def train(self, data: Dict[str, pd.DataFrame], out_dir='baseline_w_questions', **kwargs):
         rhos = []
         test_preds = []
 
         for fold_n in range(5):
-            self.calculate_features(data, fold_n)
+            self.calculate_features(data, fold_n, **kwargs)
 
             x = {}
             for k,v in self.features.items():
@@ -120,8 +135,8 @@ class Baseline():
                     f['question_hiddens'],
                     f['distilbert_hidden_states']
                 ])
-            
-            y_train = self.data['train'][targets].values
+
+            y_train = data['train'][targets].values
             x_train = x['train']
             x_test = x['test'] if 'test' in x else None
 
@@ -135,6 +150,7 @@ class Baseline():
             y_vl = y_train[val_ids]
 
             K.clear_session()
+
             go_deterministic(self.params['seed'])
 
             model = get_model(x_tr.shape[1], y_tr.shape[1])
@@ -180,6 +196,8 @@ class Baseline():
 
 if __name__ == '__main__':
     params = Baseline.default_params()
+    params['model_dir'] = Path('model')
+    params['temp_dir'] = Path('.tmp')
 
     train_df = pd.read_csv('data/train.csv')
     test_df = pd.read_csv('data/test.csv')
@@ -188,4 +206,4 @@ if __name__ == '__main__':
 
     model = Baseline(params)
 
-    model.train(data)
+    model.train(data, out_dir='test_with_questions', save_features=True)
