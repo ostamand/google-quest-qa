@@ -41,8 +41,12 @@ def main(**args):
     tokenizer = transformers.BertTokenizer.from_pretrained(os.path.join(args['model_dir'], 'bert-base-uncased'))
     tokens =  apply_tokenizer(tokenizer, texts, args['maxlen'])
 
-    tr_ids = pd.read_csv(os.path.join(args['data_dir'], f"train_ids_fold_{args['fold']}.csv"))['ids'].values
-    val_ids = pd.read_csv(os.path.join(args['data_dir'], f"valid_ids_fold_{args['fold']}.csv"))['ids'].values
+    if args.fold is not None:
+        tr_ids = pd.read_csv(os.path.join(args['data_dir'], f"train_ids_fold_{args['fold']}.csv"))['ids'].values
+        val_ids = pd.read_csv(os.path.join(args['data_dir'], f"valid_ids_fold_{args['fold']}.csv"))['ids'].values
+    else:
+        # train on almost all the data
+        tr_ids, val_ids = train_test_split(np.arange(labels.shape[0], test_size=0.05, random_state=args.seed))
 
     x_train = tokens[tr_ids]
     y_train = labels[tr_ids]
@@ -116,12 +120,12 @@ if __name__ == '__main__':
     parser.add_argument("--model_dir", default="model", type=str)
     parser.add_argument("--out_dir", default="bert_questions", type=str)
     parser.add_argument("--data_dir", default="data", type=str)
-    parser.add_argument("--fold", default=0, type=int)
+    parser.add_argument("--fold", default=None, type=int)
     parser.add_argument("--log_dir", default=".logs", type=str)
     parser.add_argument("--seed", default=42, type=int)
-    parser.add_argument("--bs", default=32, type=int)
+    parser.add_argument("--bs", default=8, type=int)
     parser.add_argument("--dp", default=0.4, type=float)
-    parser.add_argument("--maxlen", default=512, type=int)
+    parser.add_argument("--maxlen", default=256, type=int)
     parser.add_argument("--device", default="cuda", type=str)
     parser.add_argument("--do_apex", action='store_true')
     parser.add_argument("--do_wandb", action='store_true')
