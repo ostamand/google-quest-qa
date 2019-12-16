@@ -37,7 +37,7 @@ class SpearmanrCallback(tf.keras.callbacks.Callback):
         
         if rho_val > self.best_rho:
             self.best_rho = rho_val
-            self.model.save_weights('best_weights.h5')
+            self.model.save_weights('.tmp/best_weights.h5')
             self.worst = {k: 0 for k, v in self.worst.items()}
         else:
             self.worst = {k: v+1 for k,v in self.worst.items()}
@@ -55,7 +55,7 @@ class SpearmanrCallback(tf.keras.callbacks.Callback):
             print(f'\nEarly stopping at epoch {epoch}')
             if self.restore:
                 print(f'\nRestoring best weights')
-                self.model.load_weights('best_weights.h5')
+                self.model.load_weights('.tmp/best_weights.h5')
             
         print(f"\nrho val: {rho_val:.4f}")
 
