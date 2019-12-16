@@ -37,9 +37,9 @@ def get_model(input_size, output_size):
 
 class Baseline():
 
-    def __init__(self, params):
-        self.params = params
-        self.features = None
+    def __init__(self, params=None):
+        self.params = self.default_params() if not params else params
+        self.features, self.enc = None, None
 
     def _get_distilbert_hidden_states(self, model, tokenizer, df):
         answer = get_features(model, tokenizer, self.params['maxlen'], df.answer.values)
@@ -100,29 +100,29 @@ class Baseline():
 
         if 'category' not in self.features[[*self.features][0]]:
             print('Calculating categorical features...')
-            enc = OneHotEncoder(handle_unknown='ignore')
-
             find = re.compile(r"^[^.]*")
             data['train']['netloc'] = data['train']['url'].apply(lambda x: re.findall(find, urlparse(x).netloc)[0])
-
-            enc.fit(data['train'][['category', 'netloc']].values)
-
+            
+            if self.enc is None:
+                self.enc = OneHotEncoder(handle_unknown='ignore')
+                self.enc.fit(data['train'][['category', 'netloc']].values)
+            
             for k,v in data.items():
                 data[k]['netloc'] = data['train']['url'].apply(lambda x: re.findall(find, urlparse(x).netloc)[0])
-                self.features[k]['category'] = enc.transform(data[k][['category', 'netloc']].values).toarray()
+                self.features[k]['category'] = self.enc.transform(data[k][['category', 'netloc']].values).toarray()
 
         if save_features:
             with open(params['temp_dir'] / 'features.pickle', 'wb') as f:
-                pickle.dump(self.features, f)
+                pickle.dump((self.features, self.enc), f)
 
     def load_features(self):
         path = params['temp_dir'] / 'features.pickle'
         if not os.path.exists(path):
             return
         with open(params['temp_dir'] / 'features.pickle', 'rb') as f:
-            self.features = pickle.load(f)
+            self.features, self.enc = pickle.load(f)
 
-    def predict(self, df):
+    def predict(self, df, restore_folder):
         pass
 
     def train_all(self, data, out_dir='baseline_w_questions'):
@@ -142,6 +142,11 @@ class Baseline():
             all_test_preds.append(test_preds)
             rhos.append(rho)
         #None if np.any(all_test_preds is None) else all_test_preds
+
+        # also save encoder in the same folder
+        with open(self.model_dir / out_dir / f"results_fold_{i}.pickle", 'wb') as f:
+            pickle.dump(self.enc, f)
+
         return rhos, all_test_preds
 
     # to speed uo things can do training and inference at the same time 
@@ -232,6 +237,11 @@ if __name__ == '__main__':
     model = Baseline(params)
     model.load_features()
 
-    rhos, _ = model.train_all(data, out_dir='test_w_questions') # train all folds
+    rhos, test_preds_train = model.train_all(data, out_dir='test_w_questions') # train all folds
 
     print(f"rho val: {np.mean(rhos):.4f} +- {np.std(rhos):.4f}")
+
+    # check one fold vs predict function result
+
+    #model = Baseline()
+    #test_preds_predict = model.predict(test_df, params['model_dir'] / 'test_w_questions')
