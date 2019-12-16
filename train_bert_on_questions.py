@@ -26,10 +26,6 @@ def apply_tokenizer(tokenizer, texts: List[str], maxlen) -> np.array:
         tokens[i, :len(text_tokens)] = text_tokens 
     return tokens
 
-"""
-example:
-python train_bert_on_questions.py --do_apex
-"""
 @email_sender(recipient_emails=["olivier.st.amand.1@gmail.com"], sender_email="yellow.bhaji@gmail.com")
 def main(**args):
     # data
@@ -41,12 +37,12 @@ def main(**args):
     tokenizer = transformers.BertTokenizer.from_pretrained(os.path.join(args['model_dir'], 'bert-base-uncased'))
     tokens =  apply_tokenizer(tokenizer, texts, args['maxlen'])
 
-    if args.fold is not None:
+    if args['fold']:
         tr_ids = pd.read_csv(os.path.join(args['data_dir'], f"train_ids_fold_{args['fold']}.csv"))['ids'].values
         val_ids = pd.read_csv(os.path.join(args['data_dir'], f"valid_ids_fold_{args['fold']}.csv"))['ids'].values
     else:
         # train on almost all the data
-        tr_ids, val_ids = train_test_split(np.arange(labels.shape[0], test_size=0.05, random_state=args.seed))
+        tr_ids, val_ids = train_test_split(np.arange(labels.shape[0], test_size=0.05, random_state=args['seed']))
 
     x_train = tokens[tr_ids]
     y_train = labels[tr_ids]
@@ -104,7 +100,10 @@ def main(**args):
 
     # save trained model and features
 
-    out_dir = os.path.join(args['model_dir'], f"{args['out_dir']}_fold_{args['fold']}")
+    if args['fold']:
+        out_dir = os.path.join(args['model_dir'], f"{args['out_dir']}_fold_{args['fold']}")
+    else: 
+        out_dir = os.path.join(args['model_dir'], f"{args['out_dir']}")
     if not os.path.exists(out_dir):
         os.mkdir(out_dir)
 
@@ -113,6 +112,7 @@ def main(**args):
 
 # example: python train_bert_on_questions.py --do_apex --do_wandb --maxlen 256 --bs 8 --dp 0.1 --fold 0 --out_dir test
 # trained model will be saved to model/test_fold_0
+# python train_bert_on_questions.py --do_apex --do_wandb --maxlen 256 --bs 8 --dp 0.1 --out_dir test
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs1", default=10, type=int)
@@ -120,7 +120,7 @@ if __name__ == '__main__':
     parser.add_argument("--model_dir", default="model", type=str)
     parser.add_argument("--out_dir", default="bert_questions", type=str)
     parser.add_argument("--data_dir", default="data", type=str)
-    parser.add_argument("--fold", default=None, type=int)
+    parser.add_argument("--fold", default=0, type=int)
     parser.add_argument("--log_dir", default=".logs", type=str)
     parser.add_argument("--seed", default=42, type=int)
     parser.add_argument("--bs", default=8, type=int)
