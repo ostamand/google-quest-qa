@@ -46,6 +46,10 @@ class Baseline():
         question_title = get_features(model, tokenizer, self.params['maxlen'], df.question_title.values)
         return np.hstack([question_title, answer])
 
+    @property
+    def temp_dir(self):
+        return self.params['temp_dir']
+
     @property 
     def model_dir(self):
         return self.params['model_dir']
@@ -122,8 +126,44 @@ class Baseline():
         with open(params['temp_dir'] / 'features.pickle', 'rb') as f:
             self.features, self.enc = pickle.load(f)
 
+    def _predict(self, df, restore_folder, fold_n):
+        self.calculate_features({'test': df}, fold_n)
+        f = self.features['test']
+        x = np.hstack([
+                f['sentence_embeds'],
+                f['category'],
+                f['sentence_embeds_dist'],
+                f['question_hiddens'],
+                f['distilbert_hidden_states']
+        ])
+        model = get_model(x.shape[1], len(targets))
+        model.load_weights(self.model_dir / restore_folder / f"best_weights_fold_{fold_n}.h5")
+        model.compile(
+            loss=['binary_crossentropy']
+        )
+        test_preds = model.predict(x_test)
+        np.save(self.temp_dir / "test_preds_fold_{fold_n}.npy", test_preds)
+
     def predict(self, df, restore_folder):
-        pass
+
+        with open(self.model_dir / restore_folder / f"enc.pickle", 'rb') as f:
+            self.enc = pickle.load(f)
+
+        f = partial(self._predict, df, restore_folder)
+
+        for i in range(5):
+            p = Process(target=f, args=(i,))
+            p.start()
+            p.join()
+
+        # load all results
+        all_test_preds = []
+        for i in range(5):
+            test_preds = np.load(self.temp_dir / "test_preds_fold_{i}.npy")
+            all_test_preds.append(test_preds)
+
+        pdb.set_trace()
+        return all_test_preds
 
     def train_all(self, data, out_dir='baseline_w_questions'):
         # use process. tensorflow takes all the gpu...
@@ -144,7 +184,7 @@ class Baseline():
         #None if np.any(all_test_preds is None) else all_test_preds
 
         # also save encoder in the same folder
-        with open(self.model_dir / out_dir / f"results_fold_{i}.pickle", 'wb') as f:
+        with open(self.model_dir / out_dir / f"enc.pickle", 'wb') as f:
             pickle.dump(self.enc, f)
 
         return rhos, all_test_preds
