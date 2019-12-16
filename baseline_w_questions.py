@@ -5,6 +5,9 @@ from urllib.parse import urlparse
 import re
 import pickle
 import os
+import gc
+import time
+from multiprocessing import Process
 
 import tensorflow as tf
 import tensorflow.keras.backend as K
@@ -49,10 +52,12 @@ class Baseline():
 
     # calculate_features(data, 0)
     # everything that can be cached is.
-    def calculate_features(self, data: Dict[str, pd.DataFrame], fold_n: int, save_features=True, **kwargs):
+    def calculate_features(self, data: Dict[str, pd.DataFrame], fold_n: int):
         # will re-use calculated stuff if called more than once
+        save_features = False
         if self.features is None:
             self.features = {k: {} for k,v in data.items()} if self.features is None else self.features
+            save_features = True
 
         K.clear_session()
 
@@ -111,76 +116,95 @@ class Baseline():
                 pickle.dump(self.features, f)
 
     def load_features(self):
+        path = params['temp_dir'] / 'features.pickle'
+        if not os.path.exists(path):
+            return
         with open(params['temp_dir'] / 'features.pickle', 'rb') as f:
             self.features = pickle.load(f)
 
     def predict(self, df):
         pass
 
-    # to speed uo things can do training and inference at the same time 
-    def train(self, data: Dict[str, pd.DataFrame], out_dir='baseline_w_questions', **kwargs):
+    def train_all(self, data, out_dir='baseline_w_questions'):
+        # use process. tensorflow takes all the gpu...
+        all_test_preds = []
         rhos = []
-        test_preds = []
+        f = partial(self.train, data)
+        for i in range(5):
+            p = Process(target=f, args=(i, out_dir))
+            p.start()
+            p.join()
 
-        for fold_n in range(5):
-            self.calculate_features(data, fold_n, **kwargs)
+            with open(self.model_dir / out_dir / f"results_fold_{i}.pickle", 'rb') as f:
+                rho, test_preds = pickle.load(f)
 
-            x = {}
-            for k,v in self.features.items():
-                f = self.features[k]
-                x[k] = np.hstack([
-                    f['sentence_embeds'], 
-                    f['category'],
-                    f['sentence_embeds_dist'], 
-                    f['question_hiddens'],
-                    f['distilbert_hidden_states']
-                ])
+            all_test_preds.append(test_preds)
+            rhos.append(rho)
 
-            y_train = data['train'][targets].values
-            x_train = x['train']
-            x_test = x['test'] if 'test' in x else None
+        return rhos, all_test_preds
 
-            tr_ids = pd.read_csv(os.path.join('data', f"train_ids_fold_{fold_n}.csv"))['ids'].values
-            val_ids = pd.read_csv(os.path.join('data', f"valid_ids_fold_{fold_n}.csv"))['ids'].values
+    # to speed uo things can do training and inference at the same time 
+    def train(self, data: Dict[str, pd.DataFrame], fold_n: int, out_dir='baseline_w_questions'):
+        self.calculate_features(data, fold_n)
 
-            x_tr = x_train[tr_ids]
-            x_vl = x_train[val_ids]
-    
-            y_tr = y_train[tr_ids]
-            y_vl = y_train[val_ids]
+        x = {}
 
-            K.clear_session()
+        for k, v in self.features.items():
+            f = self.features[k]
+            x[k] = np.hstack([
+                f['sentence_embeds'],
+                f['category'],
+                f['sentence_embeds_dist'],
+                f['question_hiddens'],
+                f['distilbert_hidden_states']
+            ])
 
-            go_deterministic(self.params['seed'])
+        y_train = data['train'][targets].values
+        x_train = x['train']
+        x_test = x['test'] if 'test' in x else None
 
-            model = get_model(x_tr.shape[1], y_tr.shape[1])
+        tr_ids = pd.read_csv(os.path.join('data', f"train_ids_fold_{fold_n}.csv"))['ids'].values
+        val_ids = pd.read_csv(os.path.join('data', f"valid_ids_fold_{fold_n}.csv"))['ids'].values
 
-            model.compile(
-                optimizer=tf.keras.optimizers.Adam(lr=1e-4),
-                loss=['binary_crossentropy']
-            )
+        x_tr = x_train[tr_ids]
+        x_vl = x_train[val_ids]
 
-            # TODO change checkpoint name
-            cb = SpearmanrCallback((x_vl, y_vl))
+        y_tr = y_train[tr_ids]
+        y_vl = y_train[val_ids]
 
-            history = model.fit(
-                x_tr, 
-                y_tr, 
-                validation_data=(x_vl, y_vl),
-                epochs=self.params['epochs'], 
-                batch_size=self.params['bs'],
-                verbose=True,
-                callbacks=[cb]
-            )
+        go_deterministic(self.params['seed'])
 
-            model.save_weights(str(self.model_dir / out_dir / f"best_weights_fold_{fold_n}.h5"))
+        model = get_model(x_tr.shape[1], y_tr.shape[1])
 
-            rhos.append(cb.best_rho)
+        model.compile(
+            optimizer=tf.keras.optimizers.Adam(lr=1e-4),
+            loss=['binary_crossentropy']
+        )
 
-            if x_test is not None:
-                test_preds.append(model.predict(x_test))
+        # TODO change checkpoint name
+        cb = SpearmanrCallback((x_vl, y_vl))
 
-        return rhos, test_preds
+        history = model.fit(
+            x_tr,
+            y_tr,
+            validation_data=(x_vl, y_vl),
+            epochs=self.params['epochs'],
+            batch_size=self.params['bs'],
+            verbose=True,
+            callbacks=[cb]
+        )
+
+        if not os.path.exists(self.model_dir / out_dir):
+            os.mkdir(self.model_dir / out_dir)
+        model.save_weights(str(self.model_dir / out_dir / f"best_weights_fold_{fold_n}.h5"))
+
+        test_preds = None
+        if x_test is not None:
+            test_preds = model.predict(x_test)
+
+        result = (cb.best_rho, test_preds)
+        with open(self.model_dir / out_dir / f"results_fold_{fold_n}.pickle", 'wb') as f:
+            pickle.dump(result, f)
 
     @classmethod
     def default_params(cls):
@@ -205,5 +229,8 @@ if __name__ == '__main__':
     data = {'train': train_df, 'test': test_df}
 
     model = Baseline(params)
+    model.load_features()
 
-    model.train(data, out_dir='test_with_questions', save_features=True)
+    rhos, _ = model.train_all(data, out_dir='test_w_questions') # train all folds
+
+    print(f"rho val: {np.mean(rhos):.4f} +- {np.std(rhos):.4f}")
