@@ -127,20 +127,21 @@ class Baseline():
 
     def train_all(self, data, out_dir='baseline_w_questions'):
         # use process. tensorflow takes all the gpu...
-        all_test_preds = []
-        rhos = []
         f = partial(self.train, data)
         for i in range(5):
             p = Process(target=f, args=(i, out_dir))
             p.start()
             p.join()
 
+        # extract results
+        all_test_preds = []
+        rhos = []
+        for i in range(5):
             with open(self.model_dir / out_dir / f"results_fold_{i}.pickle", 'rb') as f:
                 rho, test_preds = pickle.load(f)
-
             all_test_preds.append(test_preds)
             rhos.append(rho)
-
+        #None if np.any(all_test_preds is None) else all_test_preds
         return rhos, all_test_preds
 
     # to speed uo things can do training and inference at the same time 
