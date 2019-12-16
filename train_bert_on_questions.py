@@ -42,7 +42,7 @@ def main(**args):
         val_ids = pd.read_csv(os.path.join(args['data_dir'], f"valid_ids_fold_{args['fold']}.csv"))['ids'].values
     else:
         # train on almost all the data
-        tr_ids, val_ids = train_test_split(np.arange(labels.shape[0], test_size=0.05, random_state=args['seed']))
+        tr_ids, val_ids = train_test_split(np.arange(labels.shape[0]), test_size=0.05, random_state=args['seed'])
 
     x_train = tokens[tr_ids]
     y_train = labels[tr_ids]
