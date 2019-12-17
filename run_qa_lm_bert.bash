@@ -9,8 +9,9 @@ python qa_lm_bert.py \
     --do_train \
     --do_wandb \
     --fp16 \
-    --save_total_limit 2 \
+    --logging_steps 50 \
     --save_steps 500 \
+    --save_total_limit 2 \
     --gradient_accumulation_steps 1 \
     --per_gpu_train_batch_size 4 \
     --block_size 512 \
