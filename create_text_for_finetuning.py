@@ -13,8 +13,10 @@ test_df = pd.read_csv('data/test.csv')
 # [ANSWER]: 1
 # [QUESTION_BODY]: 2
 
-train_df['text'] = train_df.apply(lambda x: '[QUESTION_BODY] ' +  x['question_body'] +  '[ANSWER] '  + x['answer'], axis=1)
-test_df['text'] = train_df.apply(lambda x:  '[QUESTION_BODY] ' +  x['question_body'] +  '[ANSWER] '  + x['answer'], axis=1)
+# TODO add CLS??
+
+train_df['text'] = train_df.apply(lambda x: '[QUESTION_BODY] ' +  x['question_body'] +  '[ANSWER] '  + x['answer'] + '[SEP]', axis=1)
+test_df['text'] = train_df.apply(lambda x:  '[QUESTION_BODY] ' +  x['question_body'] +  '[ANSWER] '  + x['answer'] + '[SEP]', axis=1)
 
 df = train_df.append(test_df, sort=False)
 
