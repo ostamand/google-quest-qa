@@ -1,0 +1,20 @@
+python qa_lm_bert.py \
+    --train_data_file data/train_qa.txt \
+    --output_dir outputs/qa_finetuning \
+    --overwrite_output_dir \
+    --mlm \
+    --model_name_or_path model/bert-base-uncased-qa \
+    --cache_dir .tmp \
+    --do_lower_case \
+    --do_train \
+    --do_wandb \
+    --fp16 \
+    --save_total_limit 2 \
+    --save_steps 500 \
+    --gradient_accumulation_steps 1 \
+    --per_gpu_train_batch_size 4 \
+    --block_size 512 \
+    --learning_rate 5e-5 \
+    --num_train_epochs 2 \
+    --weight_decay 0.0 \
+    --warmup_steps 250 

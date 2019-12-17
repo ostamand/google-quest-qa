@@ -137,6 +137,8 @@ reference/
 wandb
 .vscode
 features
+outputs
+runs
 
 .devcontainer
 
