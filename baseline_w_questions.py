@@ -105,14 +105,14 @@ class Baseline():
         if 'category' not in self.features[[*self.features][0]]:
             print('Calculating categorical features...')
             find = re.compile(r"^[^.]*")
-            data['train']['netloc'] = data['train']['url'].apply(lambda x: re.findall(find, urlparse(x).netloc)[0])
-            
+
             if self.enc is None:
+                data['train']['netloc'] = data['train']['url'].apply(lambda x: re.findall(find, urlparse(x).netloc)[0])
                 self.enc = OneHotEncoder(handle_unknown='ignore')
                 self.enc.fit(data['train'][['category', 'netloc']].values)
             
             for k,v in data.items():
-                data[k]['netloc'] = data['train']['url'].apply(lambda x: re.findall(find, urlparse(x).netloc)[0])
+                data[k]['netloc'] = data[k]['url'].apply(lambda x: re.findall(find, urlparse(x).netloc)[0])
                 self.features[k]['category'] = self.enc.transform(data[k][['category', 'netloc']].values).toarray()
 
         if save_features:
@@ -137,16 +137,16 @@ class Baseline():
                 f['distilbert_hidden_states']
         ])
         model = get_model(x.shape[1], len(targets))
-        model.load_weights(self.model_dir / restore_folder / f"best_weights_fold_{fold_n}.h5")
+        model.load_weights(str(restore_folder / f"best_weights_fold_{fold_n}.h5"))
         model.compile(
             loss=['binary_crossentropy']
         )
-        test_preds = model.predict(x_test)
-        np.save(self.temp_dir / "test_preds_fold_{fold_n}.npy", test_preds)
+        test_preds = model.predict(x)
+        np.save(self.temp_dir / f"test_preds_fold_{fold_n}.npy", test_preds)
 
     def predict(self, df, restore_folder):
 
-        with open(self.model_dir / restore_folder / f"enc.pickle", 'rb') as f:
+        with open(restore_folder / f"enc.pickle", 'rb') as f:
             self.enc = pickle.load(f)
 
         f = partial(self._predict, df, restore_folder)
@@ -159,10 +159,9 @@ class Baseline():
         # load all results
         all_test_preds = []
         for i in range(5):
-            test_preds = np.load(self.temp_dir / "test_preds_fold_{i}.npy")
+            test_preds = np.load(self.temp_dir / f"test_preds_fold_{i}.npy")
             all_test_preds.append(test_preds)
 
-        pdb.set_trace()
         return all_test_preds
 
     def train_all(self, data, out_dir='baseline_w_questions'):
@@ -283,5 +282,10 @@ if __name__ == '__main__':
 
     # check one fold vs predict function result
 
-    #model = Baseline()
-    #test_preds_predict = model.predict(test_df, params['model_dir'] / 'test_w_questions')
+    model = Baseline(params)
+    test_preds_predict = model.predict(test_df, params['model_dir'] / 'test_w_questions')
+
+    # compare both...
+    pdb.set_trace()
+
+    test = 13
