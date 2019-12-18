@@ -20,8 +20,8 @@ class BertOnQuestions(nn.Module):
             {'params': [p for n, p in self.fc.named_parameters()], 'weight_decay': kwargs['fc_wd']}
         ]
         
-    def forward(self, input_ids, attention_mask=None):
-        _, pooled = self.bert(input_ids=input_ids, attention_mask=attention_mask)
+    def forward(self, input_ids, attention_mask=None, token_type_ids=None):
+        _, pooled = self.bert(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids)
         return self.fc(self.pooled_dp(pooled))
     
     def train_head_only(self):
