@@ -27,7 +27,6 @@ class DatasetQA(Dataset):
     # TODO variable maxlen. for now fixed at 512
     def __init__(self, df, tokenizer, ids=None, max_len_q_b=150):
         super(DatasetQA, self).__init__()
-        df = df.iloc[:10] # for dev
         
         # TODO check if padding is before SEP or not...
         df['q_b_tokens'] = df['question_body'].apply(lambda x: tokenizer.encode(x, max_length=512, add_special_tokens=False))
@@ -39,17 +38,22 @@ class DatasetQA(Dataset):
         # [QUESTION_BODY]: 2
         def process(row):
             tokens = [tokenizer.cls_token_id] + [2] + (512-3)*[tokenizer.pad_token_id] + [tokenizer.sep_token_id]
-            
-            if len(row['a_tokens']) >= 512-4-max_len_q_b:
-                question_trunc = row['q_b_tokens'][:max_len_q_b]
-                answer_trunc = row['a_tokens'][:512-4-len(row['q_b_tokens'])]
+        
+            len_q = np.min([max_len_q_b, len(row['q_b_tokens'])])
+
+            if len(row['a_tokens']) >= 512-4-len_q:
+                # need to truncate the answer and possibly the question
+                question_trunc = row['q_b_tokens'][:len_q]
+                answer_trunc = row['a_tokens'][:512-4-len_q]
             else: 
+                # full answer and maximum question length
                 answer_trunc = row['a_tokens']
-                question_trunc = row['q_b_tokens'][:512-4-len(row['a_tokens'])]
+                question_trunc = row['q_b_tokens'][:512-4-len(answer_trunc)]
+        
             combined = question_trunc + [1] + answer_trunc
             tokens[2:2+len(combined)] = combined
 
-            len_q = len(question_trunc)+2
+            len_q += 2 # to consider special tokens
             token_types = [0] * len_q + (512-len_q) * [1]
 
             return tokens, token_types
@@ -89,6 +93,8 @@ def main(**args):
     train_dataset = DatasetQA(train_df, tokenizer, tr_ids, max_len_q_b=150)
 
     valid_dataset = DatasetQA(train_df, tokenizer, val_ids, max_len_q_b=150)
+
+    pdb.set_trace()
 
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args['bs'], shuffle=True)
     valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=args['bs'], shuffle=False)
