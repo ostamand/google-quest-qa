@@ -101,7 +101,7 @@ class Trainer():
                 attention_mask = (x_batch > 0).to(device)
 
                 outs = model(x_batch, attention_mask=attention_mask, token_type_ids=token_type_batch)
-                loss = lossf(outs, y_batch)
+                loss = lossf(outs, y_batch) / p['accumulation_steps']
 
                 acc_loss += loss.item() / bs
 
@@ -124,7 +124,6 @@ class Trainer():
                     optimizer.step()
                     optimizer.zero_grad()
                     
-                    acc_loss /= p['accumulation_steps']
                     logs['loss/train'] = acc_loss
 
                     logger.add_scalars(logs)
