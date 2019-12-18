@@ -85,14 +85,24 @@ class Trainer():
             
             pb = tqdm(enumerate(train_loader), total=len(train_loader), desc=f"Epoch: {epoch_i+1}/{p['epochs']}")
 
-            for batch_i, (x_batch, y_batch) in pb:
-                bs = x_batch.shape[0]
-                
+            for batch_i, batch in pb:
                 # step
                 lr_scheduler.step() 
 
-                outs = model(x_batch.to(device), attention_mask=(x_batch > 0).to(device))
-                loss = lossf(outs, y_batch.to(device))
+                token_type_batch = None
+                if len(batch) == 2:
+                    x_batch, y_batch = batch
+                if len(batch) == 3:
+                    x_batch, token_type_batch, y_batch = batch
+                    token_type_batch.to(device)
+
+                x_batch.to(device)
+                y_batch.to(device)
+                attention_mask = (x_batch > 0).to(device)
+
+                outs = model(x_batch, attention_mask=attention_mask, token_type_ids=token_type_batch)
+                loss = lossf(outs, y_batch)
+
                 acc_loss += loss.item() / bs
 
                 if p['do_apex']:
@@ -106,7 +116,7 @@ class Trainer():
                     logs['lr/train'] = optimizer.param_groups[0]['lr']
 
                     # clip gradients (l2)
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), p['clip'])
+                    torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), p['clip'])
                     
                     # log gradients after clipping (l2)
                     logs['grads/train'] = get_max_gradient(model.parameters())
