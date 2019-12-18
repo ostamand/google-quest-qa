@@ -32,12 +32,12 @@ class DatasetQA(Dataset):
         df['q_b_tokens'] = df['question_body'].apply(lambda x: tokenizer.encode(x, max_length=512, add_special_tokens=False))
         df['a_tokens'] = df['answer'].apply(lambda x: tokenizer.encode(x, max_length=512, add_special_tokens=False))
         
-        # [CLS] [QUESTION_BODY] ... [ANSWER] ... [PAD] ... [PAD] [SEP]
+        # [CLS] [QUESTION_BODY] ... [ANSWER] ... [SEP] ... [PAD] ... [PAD] 
         # [PAD]: 0
         # [ANSWER]: 1
         # [QUESTION_BODY]: 2
         def process(row):
-            tokens = [tokenizer.cls_token_id] + [2] + (512-3)*[tokenizer.pad_token_id] + [tokenizer.sep_token_id]
+            tokens = [tokenizer.cls_token_id] + [2] + (512-2)*[tokenizer.pad_token_id] 
         
             len_q = np.min([max_len_q_b, len(row['q_b_tokens'])])
 
@@ -50,7 +50,7 @@ class DatasetQA(Dataset):
                 answer_trunc = row['a_tokens']
                 question_trunc = row['q_b_tokens'][:512-4-len(answer_trunc)]
         
-            combined = question_trunc + [1] + answer_trunc
+            combined = question_trunc + [1] + answer_trunc + [tokenizer.sep_token_id]
             tokens[2:2+len(combined)] = combined
 
             len_q += 2 # to consider special tokens
