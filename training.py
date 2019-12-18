@@ -11,6 +11,8 @@ from helpers_torch import set_seed
 from helpers import compute_spearmanr, EarlyStoppingSimple
 from schedulers import LearningRateWithUpDown
 from loggers import MultiLogger
+
+import pdb
     
 def get_max_gradient(params, norm=2):
     with torch.no_grad():
@@ -87,21 +89,20 @@ class Trainer():
 
             for batch_i, batch in pb:
                 # step
-                lr_scheduler.step() 
+                lr_scheduler.step()
 
                 token_type_batch = None
+                
                 if len(batch) == 2:
                     x_batch, y_batch = batch
                 if len(batch) == 3:
                     x_batch, token_type_batch, y_batch = batch
-                    token_type_batch.to(device)
+                    token_type_batch = token_type_batch.to(device)
 
-                x_batch.to(device)
-                y_batch.to(device)
-                attention_mask = (x_batch > 0).to(device)
+                bs = x_batch.shape[0]
 
-                outs = model(x_batch, attention_mask=attention_mask, token_type_ids=token_type_batch)
-                loss = lossf(outs, y_batch) / p['accumulation_steps']
+                outs = model(x_batch.to(device), attention_mask=(x_batch > 0).to(device), token_type_ids=token_type_batch)
+                loss = lossf(outs, y_batch.to(device)) / p['accumulation_steps']
 
                 acc_loss += loss.item() / bs
 
@@ -162,9 +163,17 @@ class Trainer():
         lossf = nn.BCEWithLogitsLoss()
         y_true, y_pred = [], []
         loss = 0
-        for batch_i, (x_batch, y_batch) in enumerate(loader):
+        for batch_i, batch in enumerate(loader):
             with torch.no_grad():
-                outs = model(x_batch.to(device), attention_mask=(x_batch > 0).to(device))
+
+                token_type_batch = None
+                if len(batch) == 2:
+                    x_batch, y_batch = batch
+                if len(batch) == 3:
+                    x_batch, token_type_batch, y_batch = batch
+                    token_type_batch = token_type_batch.to(device)
+
+                outs = model(x_batch.to(device), attention_mask=(x_batch > 0).to(device), token_type_ids=token_type_batch)
                 loss += lossf(outs, y_batch.to(device)).item()
 
                 y_pred.append(torch.sigmoid(outs).cpu().numpy())
