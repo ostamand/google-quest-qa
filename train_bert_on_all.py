@@ -94,8 +94,6 @@ def main(**args):
 
     valid_dataset = DatasetQA(train_df, tokenizer, val_ids, max_len_q_b=150)
 
-    pdb.set_trace()
-
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args['bs'], shuffle=True)
     valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=args['bs'], shuffle=False)
     loaders = {'train': train_loader, 'valid': valid_loader}
@@ -114,7 +112,7 @@ def main(**args):
         wandb.init(project=args['project'], tags='bert_on_all')
         wandb.watch(model, log=None)
     
-    optimizer = transformers.AdamW(model.optimizer_grouped_parameters, lr=1e-2)
+    optimizer = transformers.AdamW(model.optimizer_grouped_parameters, lr=1e-3)
 
     if args['do_apex']:
         # TODO opt_level O2
