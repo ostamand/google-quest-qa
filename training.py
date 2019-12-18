@@ -92,7 +92,7 @@ class Trainer():
                 lr_scheduler.step()
 
                 token_type_batch = None
-                
+
                 if len(batch) == 2:
                     x_batch, y_batch = batch
                 if len(batch) == 3:
@@ -117,7 +117,8 @@ class Trainer():
                     logs['lr/train'] = optimizer.param_groups[0]['lr']
 
                     # clip gradients (l2)
-                    torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), p['clip'])
+                    if p['clip'] is not None:
+                        torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), p['clip'])
                     
                     # log gradients after clipping (l2)
                     # logs['grads/train'] = get_max_gradient(model.parameters())
