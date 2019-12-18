@@ -21,7 +21,7 @@ class MultiLogger():
             for k,v in logs.items():
                 self.writer.add_scalar(k, v, step)
         if self.do_wandb:
-            wandb.log(logs)
+            wandb.log(logs, step=step)
 
     def close(self):
         if self.writer:

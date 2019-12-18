@@ -119,7 +119,7 @@ class Trainer():
                     torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), p['clip'])
                     
                     # log gradients after clipping (l2)
-                    logs['grads/train'] = get_max_gradient(model.parameters())
+                    # logs['grads/train'] = get_max_gradient(model.parameters())
 
                     optimizer.step()
                     optimizer.zero_grad()
