@@ -15,7 +15,7 @@ from knockknock import email_sender
 import wandb
 
 from constants import targets
-from modeling import BertOnQuestions
+from modeling import BertOnQA
 from training import Trainer
 
 from torch.utils.data import Dataset
@@ -32,7 +32,9 @@ class DatasetQA(Dataset):
         df['q_b_tokens'] = df['question_body'].apply(lambda x: tokenizer.encode(x, max_length=512, add_special_tokens=False))
         df['a_tokens'] = df['answer'].apply(lambda x: tokenizer.encode(x, max_length=512, add_special_tokens=False))
         
-        # [CLS] [QUESTION_BODY] ... [ANSWER] ... [SEP] ... [PAD] ... [PAD] 
+        # [CLS] [QUESTION_BODY] question body [ANSWER] answer [SEP] [PAD]
+        # TODO try [CLS] question body [SEP] answer [SEP] [PAD]
+
         # [PAD]: 0
         # [ANSWER]: 1
         # [QUESTION_BODY]: 2
@@ -100,37 +102,28 @@ def main(**args):
 
     device = torch.device(args['device'])
 
-    params = BertOnQuestions.default_params()
-    params['fc_dp'] = 0.
+    params = BertOnQA.default_params()
+    params['fc_dp'] = args['dp']
+    params['bert_wd'] = args['bert_wd']
 
-    model = BertOnQuestions(len(targets), args['model_dir'], **params)
+    model = BertOnQA(len(targets), args['model_dir'], **params)
     model.to(device)
 
     if args['do_wandb']:
         wandb.init(project=args['project'], tags='bert_on_all')
         wandb.watch(model, log=None)
 
-    optimizer = transformers.AdamW(model.optimizer_grouped_parameters, lr=1e-3)
+    optimizer = transformers.AdamW(model.optimizer_grouped_parameters, lr=2e-5)
 
     if args['do_apex']:
         # TODO opt_level O2
         model, optimizer = amp.initialize(model, optimizer, opt_level="O1", verbosity=0)
 
-    # train head
-
-    # model.train_head_only()
-    
-    #trainer = Trainer(**args)
-    #trainer.train(model, loaders, optimizer, epochs=args['epochs1'])
-
     # train all layers
 
-    model.pooled_dp.p = args['dp']
     model.train_all()
 
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = 2e-5
-
+    # TODO try: x = tf.keras.layers.GlobalAveragePooling1D()(sequence_output)
     trainer = Trainer(**args)
     trainer.train(model, loaders, optimizer, epochs=args['epochs2'], warmup=0.5, warmdown=0.5)
 
@@ -140,16 +133,18 @@ def main(**args):
     if not os.path.exists(out_dir):
         os.mkdir(out_dir)
 
-    torch.save(model.state_dict(), os.path.join(out_dir, f'model_state_dict_fold_{args['fold']}.pth'))
-    torch.save(args, os.path.join(out_dir, f'training_args_fold_{args['fold']}.bin'))
+    torch.save(model.state_dict(), os.path.join(out_dir, f"model_state_dict_fold_{args['fold']}.pth"))
+    torch.save(args, os.path.join(out_dir, f"training_args_fold_{args['fold']}.bin"))
 
-# python3  train_bert_on_all.py --do_apex --do_wandb --bs 8 --fold 0 --out_dir test_on_all --dp 0.1
+# python3  train_bert_on_all.py --do_apex --do_wandb --bs 4 --fold 0 --out_dir test_on_all --dp 0.1
+# python3  train_bert_on_all.py --do_apex --do_wandb --bs 4 --fold 0 --out_dir outputs/test_on_all --dp 0.1 --bert_wd 0.0 --model_dir outputs/qa_finetuning_20_epochs 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs1", default=10, type=int)
     parser.add_argument("--epochs2", default=5, type=int)
+    parser.add_argument("--bert_wd", default=0.0, type=float)
     parser.add_argument("--model_dir", default="model/bert-base-uncased-qa", type=str)
-    parser.add_argument("--out_dir", default="outputs/bert-questions-qa", type=str)
+    parser.add_argument("--out_dir", default="outputs/bert-base-uncased-qa", type=str)
     parser.add_argument("--data_dir", default="data", type=str)
     parser.add_argument("--fold", default=0, type=int)
     parser.add_argument("--log_dir", default=".logs", type=str)
