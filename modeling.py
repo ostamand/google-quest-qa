@@ -8,7 +8,7 @@ class BertOnQuestions(nn.Module):
     def  __init__(self, output_shape, model_dir, **kwargs):
         super(BertOnQuestions, self).__init__()
         
-        self.bert = transformers.BertModel.from_pretrained(os.path.join(model_dir, 'bert-base-uncased'))
+        self.bert = transformers.BertModel.from_pretrained(model_dir)
         self.pooled_dp = nn.Dropout(kwargs['fc_dp'])
         self.fc = nn.Linear(self.bert.config.hidden_size, output_shape)
         

@@ -88,7 +88,7 @@ def main(**args):
         tr_ids, val_ids = train_test_split(np.arange(len(train_df)), test_size=0.05, random_state=args['seed'])
 
     # TODO change for bert-base-uncased-qa. ie finetuned LM 
-    tokenizer = transformers.BertTokenizer.from_pretrained(os.path.join(args['model_dir'], 'bert-base-uncased'))
+    tokenizer = transformers.BertTokenizer.from_pretrained(args['model_dir'])
 
     train_dataset = DatasetQA(train_df, tokenizer, tr_ids, max_len_q_b=150)
 
@@ -100,26 +100,28 @@ def main(**args):
 
     device = torch.device(args['device'])
 
-    # train head
-
     params = BertOnQuestions.default_params()
     params['fc_dp'] = 0.
+
     model = BertOnQuestions(len(targets), args['model_dir'], **params)
-    model.train_head_only()
     model.to(device)
 
     if args['do_wandb']:
         wandb.init(project=args['project'], tags='bert_on_all')
         wandb.watch(model, log=None)
-    
+
     optimizer = transformers.AdamW(model.optimizer_grouped_parameters, lr=1e-3)
 
     if args['do_apex']:
         # TODO opt_level O2
         model, optimizer = amp.initialize(model, optimizer, opt_level="O1", verbosity=0)
 
-    trainer = Trainer(**args)
-    trainer.train(model, loaders, optimizer, epochs=args['epochs1'])
+    # train head
+
+    # model.train_head_only()
+    
+    #trainer = Trainer(**args)
+    #trainer.train(model, loaders, optimizer, epochs=args['epochs1'])
 
     # train all layers
 
@@ -134,37 +136,33 @@ def main(**args):
 
     # save trained model and features
 
-    if args['fold']:
-        out_dir = os.path.join(args['model_dir'], f"{args['out_dir']}_fold_{args['fold']}")
-    else: 
-        out_dir = os.path.join(args['model_dir'], f"{args['out_dir']}")
+    out_dir = args['out_dir']
     if not os.path.exists(out_dir):
         os.mkdir(out_dir)
 
-    torch.save(model.state_dict(), os.path.join(out_dir, 'model_state_dict.pth'))
-    torch.save(args, os.path.join(out_dir, 'training_args.bin'))
+    torch.save(model.state_dict(), os.path.join(out_dir, f'model_state_dict_fold_{args['fold']}.pth'))
+    torch.save(args, os.path.join(out_dir, f'training_args_fold_{args['fold']}.bin'))
 
-# example: python3 train_bert_on_all.py --do_apex --do_wandb --bs 4 --fold 0 --out_dir test_on_all
+# python3  train_bert_on_all.py --do_apex --do_wandb --bs 8 --fold 0 --out_dir test_on_all --dp 0.1
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs1", default=10, type=int)
     parser.add_argument("--epochs2", default=5, type=int)
-    parser.add_argument("--model_dir", default="model", type=str)
-    parser.add_argument("--out_dir", default="bert_questions", type=str)
+    parser.add_argument("--model_dir", default="model/bert-base-uncased-qa", type=str)
+    parser.add_argument("--out_dir", default="outputs/bert-questions-qa", type=str)
     parser.add_argument("--data_dir", default="data", type=str)
     parser.add_argument("--fold", default=0, type=int)
     parser.add_argument("--log_dir", default=".logs", type=str)
     parser.add_argument("--seed", default=42, type=int)
     parser.add_argument("--bs", default=8, type=int)
-    parser.add_argument("--dp", default=0.4, type=float)
-    parser.add_argument("--maxlen", default=256, type=int)
+    parser.add_argument("--dp", default=0.1, type=float)
     parser.add_argument("--device", default="cuda", type=str)
     parser.add_argument("--do_apex", action='store_true')
     parser.add_argument("--do_wandb", action='store_true')
     parser.add_argument("--do_tb", action='store_true')
     parser.add_argument("--warmup", default=0.5, type=float)
     parser.add_argument("--warmdown", default=0.5, type=float)
-    parser.add_argument("--clip", default=10.0, type=float)
+    parser.add_argument("--clip", default=None, type=float)
     parser.add_argument("--accumulation_steps", default=2, type=int)
     parser.add_argument("--project", default="google-quest-qa", type=str)
     parser.add_argument("--head_ckpt", default=None, type=str)
