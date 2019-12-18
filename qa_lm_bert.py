@@ -131,11 +131,9 @@ class TextDataset(Dataset):
         # tokens, token_types
         return torch.tensor(x[0]), torch.tensor(x[1])
 
-
 def load_and_cache_examples(args, tokenizer, evaluate=False):
     dataset = TextDataset(tokenizer, args, file_path=args.eval_data_file if evaluate else args.train_data_file, block_size=args.block_size)
     return dataset
-
 
 def set_seed(args):
     random.seed(args.seed)
@@ -143,7 +141,6 @@ def set_seed(args):
     torch.manual_seed(args.seed)
     if args.n_gpu > 0:
         torch.cuda.manual_seed_all(args.seed)
-
 
 def _rotate_checkpoints(args, checkpoint_prefix, use_mtime=False):
     if not args.save_total_limit:
@@ -173,7 +170,6 @@ def _rotate_checkpoints(args, checkpoint_prefix, use_mtime=False):
         logger.info("Deleting older checkpoint [{}] due to args.save_total_limit".format(checkpoint))
         shutil.rmtree(checkpoint)
 
-
 def mask_tokens(inputs, tokenizer, args):
     """ Prepare masked tokens inputs/labels for masked language modeling: 80% MASK, 10% random, 10% original. """
     labels = inputs.clone()
@@ -195,7 +191,6 @@ def mask_tokens(inputs, tokenizer, args):
 
     # The rest of the time (10% of the time) we keep the masked input tokens unchanged
     return inputs, labels
-
 
 def train(args, train_dataset, model, tokenizer):
     """ Train the model """
@@ -301,7 +296,6 @@ def train(args, train_dataset, model, tokenizer):
             break
 
     return global_step, tr_loss / global_step
-
 
 def evaluate(args, model, tokenizer, prefix=""):
     # Loop to handle MNLI double evaluation (matched, mis-matched)
