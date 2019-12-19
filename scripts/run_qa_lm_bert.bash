@@ -1,4 +1,4 @@
-python qa_lm_bert.py \
+python ../qa_lm_bert.py \
     --train_data_file data/train_qa.txt \
     --output_dir outputs/qa_finetuning \
     --overwrite_output_dir \
