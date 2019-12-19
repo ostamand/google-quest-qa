@@ -12,10 +12,10 @@ python qa_lm_bert.py \
     --logging_steps 50 \
     --save_steps 500 \
     --save_total_limit 2 \
-    --gradient_accumulation_steps 1 \
+    --gradient_accumulation_steps 2 \
     --per_gpu_train_batch_size 4 \
     --block_size 512 \
     --learning_rate 5e-5 \
-    --num_train_epochs 2 \
-    --weight_decay 0.0 \
-    --warmup_steps 250 
+    --num_train_epochs 20 \
+    --weight_decay 0.01 \
+    --warmup_steps 500 
