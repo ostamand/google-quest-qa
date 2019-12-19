@@ -69,6 +69,7 @@ class Trainer():
         
         scheduler = ReduceLROnPlateau(optimizer, 'max', patience=2, verbose=True, factor=0.1)
         early_stopping = EarlyStoppingSimple(model, patience=5, min_delta=0)  
+
         lr_scheduler = LearningRateWithUpDown(
             optimizer, 
             p['epochs'] * len(train_loader), 
@@ -155,7 +156,9 @@ class Trainer():
                 
                 print(f"rho: {metrics['spearmanr']:.4f} (val), loss: {metrics['loss']:.4f} (val)")
         
-        early_stopping.restore()
+        if valid_loader:
+            early_stopping.restore()
+
         logger.close()
     
     def evaluate(self, model, loader):
