@@ -184,7 +184,7 @@ def main(**args):
         wandb.init(project=args['project'], tags='bert_on_all')
         wandb.watch(model, log=None)
 
-    optimizer = transformers.AdamW(model.optimizer_grouped_parameters, lr=2e-5)
+    optimizer = transformers.AdamW(model.optimizer_grouped_parameters, lr=args['lr'])
 
     if args['do_apex']:
         # TODO opt_level O2
@@ -196,7 +196,7 @@ def main(**args):
 
     # TODO try: x = tf.keras.layers.GlobalAveragePooling1D()(sequence_output)
     trainer = Trainer(**args)
-    trainer.train(model, loaders, optimizer, epochs=args['epochs2'], warmup=args['warmup'], warmdown=args['warmdown'])
+    trainer.train(model, loaders, optimizer, epochs=args['epochs'], warmup=args['warmup'], warmdown=args['warmdown'])
 
     # save trained model and features
 
@@ -211,9 +211,9 @@ def main(**args):
 # python3 train_bert_on_all.py --do_apex --do_wandb --bs 4 --fold 0 --out_dir outputs/test_on_all --dp 0.1 --bert_wd 0.01 --model_dir model/bert-base-uncased --warmup 0.5 --warmdown 0.5
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs1", default=10, type=int)
-    parser.add_argument("--epochs2", default=5, type=int)
+    parser.add_argument("--epochs", default=5, type=int)
     parser.add_argument("--bert_wd", default=0.0, type=float)
+    parser.add_argument("--lr", default=2e-5, type=float)
     parser.add_argument("--max_len_q_b", default=150, type=int)
     parser.add_argument("--model_dir", default="model/bert-base-uncased-qa", type=str)
     parser.add_argument("--out_dir", default="outputs/bert-base-uncased-qa", type=str)

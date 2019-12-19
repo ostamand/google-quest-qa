@@ -3,6 +3,9 @@
         --do_wandb \
         --bs 4 \
         --fold 0 \
+        --accumulation_step 2 \
+        --epochs 5 \
+        --lr 2e-5 \
         --out_dir outputs/test_on_all \
         --dp 0.1 \
         --bert_wd 0.01 \
