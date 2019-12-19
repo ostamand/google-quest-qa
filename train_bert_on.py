@@ -51,7 +51,7 @@ def main(**args):
     tokenizer = transformers.BertTokenizer.from_pretrained(args['model_dir'])
     tokens =  apply_tokenizer(tokenizer, texts, args['maxlen'])
 
-    if args['fold']:
+    if args['fold'] is not None:
         tr_ids = pd.read_csv(os.path.join(args['data_dir'], f"train_ids_fold_{args['fold']}.csv"))['ids'].values
         val_ids = pd.read_csv(os.path.join(args['data_dir'], f"valid_ids_fold_{args['fold']}.csv"))['ids'].values
     else:
@@ -85,7 +85,6 @@ def main(**args):
     device = torch.device(args['device'])
 
     # train head
-
     params = BertOnQuestions.default_params()
     params['fc_dp'] = 0.
     model = BertOnQuestions(len(targets_for_tr), args['model_dir'], **params)
