@@ -84,29 +84,31 @@ def main(**args):
 
     device = torch.device(args['device'])
 
-    # train head
     params = BertOnQuestions.default_params()
     params['fc_dp'] = 0.
     model = BertOnQuestions(len(targets_for_tr), args['model_dir'], **params)
-    model.train_head_only()
     model.to(device)
 
     if args['do_wandb']:
         wandb.init(project=args['project'])
         wandb.watch(model)
-    
+
     optimizer = transformers.AdamW(model.optimizer_grouped_parameters, lr=args['lr1'])
 
     if args['do_apex']:
         # TODO tru O2
         model, optimizer = amp.initialize(model, optimizer, opt_level="O1", verbosity=0)
 
-    trainer = Trainer(**args)
-    trainer.train(model, loaders, optimizer, epochs=args['epochs1'])
+    # train head
+
+    if args['do_head']:
+        model.train_head_only()
+        trainer = Trainer(**args)
+        trainer.train(model, loaders, optimizer, epochs=args['epochs1'])
 
     # train all layers
 
-    model.pooled_dp.p = args['dp']
+    model.fc_dp.p = args['dp']
     model.train_all()
 
     for param_group in optimizer.param_groups:
@@ -148,6 +150,7 @@ if __name__ == '__main__':
     parser.add_argument("--do_apex", action='store_true')
     parser.add_argument("--do_wandb", action='store_true')
     parser.add_argument("--do_tb", action='store_true')
+    parser.add_argument("--do_head", action='store_true')
     parser.add_argument("--do_answer", action='store_true')
     parser.add_argument("--warmup", default=0.5, type=float)
     parser.add_argument("--warmdown", default=0.5, type=float)
