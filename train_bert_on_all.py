@@ -105,11 +105,19 @@ class DatasetQA(Dataset):
                     # full answer and maximum question length
                     answer_trunc = row['a_tokens']
                     
-                    # try with full question body and truncated question title
+                    # try with full title and truncated question body
                     if len(answer_trunc) + len(row['q_b_tokens']) + len_q_t >= 512-4:
-                        pdb.set_trace()
-                        question_body_trunc = row['q_b_tokens']
-                        question_title_trunc = row['q_t_tokens'][:512-4-len(answer_trunc)-len(question_body_trunc)]
+                        
+                        question_title_trunc = row['q_t_tokens']
+                        question_body_trunc =  row['q_b_tokens'][:512-4-len(answer_trunc)-len(question_title_trunc)]
+
+                        if len(question_title_trunc) + len(question_body_trunc) + len(answer_trunc) > 512-4:
+                            # need to truncate title also for now will truncate both
+                            pdb.set_trace()
+                            # TODO does not happen in the train dataset
+                            question_title_trunc = row['q_t_tokens'][:len_q_t]
+                            question_body_trunc =  row['q_b_tokens'][:len_q_b]
+
                     # full question body, question title and answer
                     else:
                         question_body_trunc = row['q_b_tokens']
@@ -122,7 +130,7 @@ class DatasetQA(Dataset):
 
                 return tokens, token_types
 
-        df['all'] = df.apply(lambda x: process(x, how=1), axis=1)
+        df['all'] = df.apply(lambda x: process(x, how=2), axis=1)
 
         self.labels = df[targets].values.astype(np.float32)
         self.tokens = np.stack(df['all'].apply(lambda x: x[0]).values).astype(np.long)
