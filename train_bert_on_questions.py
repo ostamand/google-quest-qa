@@ -29,10 +29,24 @@ def apply_tokenizer(tokenizer, texts: List[str], maxlen) -> np.array:
 @email_sender(recipient_emails=["olivier.st.amand.1@gmail.com"], sender_email="yellow.bhaji@gmail.com")
 def main(**args):
     # data
-    targets_question = [x for x in targets if x.startswith('question')]
+    
     train_df = pd.read_csv(os.path.join(args['data_dir'], 'train.csv'))
-    texts = train_df.question_body.values
-    labels = train_df[targets_question].values.astype(np.float32)
+
+    # answer
+    if args['do_answer']:
+        targets_for_tr = [x for x in targets if x.startswith('answer')]
+        texts = train_df.answer.values
+    # questions
+    else:
+        targets_for_tr = [x for x in targets if x.startswith('question')]
+        #texts = train_df.question_body.values
+        #TODO try adding [SEP]
+        #TODO try adding token_types...
+        #TODO change pooling
+        #TODO increase dp
+        texts = train_df.apply(lambda x: x['question_title'] + ' ' + x['question_body'], axis=1)
+
+    labels = train_df[targets_for_tr].values.astype(np.float32)
 
     tokenizer = transformers.BertTokenizer.from_pretrained(args['model_dir'])
     tokens =  apply_tokenizer(tokenizer, texts, args['maxlen'])
@@ -70,7 +84,7 @@ def main(**args):
 
     params = BertOnQuestions.default_params()
     params['fc_dp'] = 0.
-    model = BertOnQuestions(len(targets_question), args['model_dir'], **params)
+    model = BertOnQuestions(len(targets_for_tr), args['model_dir'], **params)
     model.train_head_only()
     model.to(device)
 
@@ -127,9 +141,10 @@ if __name__ == '__main__':
     parser.add_argument("--do_apex", action='store_true')
     parser.add_argument("--do_wandb", action='store_true')
     parser.add_argument("--do_tb", action='store_true')
+    parser.add_argument("--do_answer", action='store_true')
     parser.add_argument("--warmup", default=0.5, type=float)
     parser.add_argument("--warmdown", default=0.5, type=float)
-    parser.add_argument("--clip", default=10.0, type=float)
+    parser.add_argument("--clip", default=None, type=float)
     parser.add_argument("--accumulation_steps", default=2, type=int)
     parser.add_argument("--project", default="google-quest-qa", type=str)
     parser.add_argument("--head_ckpt", default=None, type=str)
