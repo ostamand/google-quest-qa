@@ -163,9 +163,9 @@ def main(**args):
     # TODO change for bert-base-uncased-qa. ie finetuned LM 
     tokenizer = transformers.BertTokenizer.from_pretrained(args['model_dir'])
 
-    train_dataset = DatasetQA(train_df, tokenizer, tr_ids, max_len_q_b=150, max_len_q_t=30)
+    train_dataset = DatasetQA(train_df, tokenizer, tr_ids, max_len_q_b=args['max_len_q_b'], max_len_q_t=30)
 
-    valid_dataset = DatasetQA(train_df, tokenizer, val_ids, max_len_q_b=150, max_len_q_t=30)
+    valid_dataset = DatasetQA(train_df, tokenizer, val_ids, max_len_q_b=args['max_len_q_b'], max_len_q_t=30)
 
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args['bs'], shuffle=True)
     valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=args['bs'], shuffle=False)
@@ -214,6 +214,7 @@ if __name__ == '__main__':
     parser.add_argument("--epochs1", default=10, type=int)
     parser.add_argument("--epochs2", default=5, type=int)
     parser.add_argument("--bert_wd", default=0.0, type=float)
+    parser.add_argument("--max_len_q_b", default=150, type=int)
     parser.add_argument("--model_dir", default="model/bert-base-uncased-qa", type=str)
     parser.add_argument("--out_dir", default="outputs/bert-base-uncased-qa", type=str)
     parser.add_argument("--data_dir", default="data", type=str)
