@@ -25,7 +25,7 @@ import pdb
 class DatasetQA(Dataset):
 
     # TODO variable maxlen. for now fixed at 512
-    def __init__(self, df, tokenizer, ids=None, max_len_q_b=220, max_len_q_t=30):
+    def __init__(self, df, tokenizer, ids=None, max_len_q_b=150, max_len_q_t=30):
         super(DatasetQA, self).__init__()
 
         #df = df.iloc[:10] # for dev
@@ -126,8 +126,8 @@ class DatasetQA(Dataset):
                 tokens[1:1+len(combined)] = combined
 
                 # TODO change token_types. 0 for question, 1 for answer
-                token_types = [0] * (len(question_title_trunc)+2) + (len(question_body_trunc)+len(answer_trunc)+2) * [1] + (512 - len(answer_trunc) - len(question_body_trunc) - len(question_title_trunc)  - 4) * [0]
-                #token_types = [0] * (len(question_title_trunc)+len(question_body_trunc)+3) + (len(answer_trunc)+1) * [1] + (512 - len(answer_trunc) - len(question_body_trunc) - len(question_title_trunc)  - 4) * [0]
+                #token_types = [0] * (len(question_title_trunc)+2) + (len(question_body_trunc)+len(answer_trunc)+2) * [1] + (512 - len(answer_trunc) - len(question_body_trunc) - len(question_title_trunc)  - 4) * [0]
+                token_types = [0] * (len(question_title_trunc)+len(question_body_trunc)+3) + (len(answer_trunc)+1) * [1] + (512 - len(answer_trunc) - len(question_body_trunc) - len(question_title_trunc)  - 4) * [0]
 
                 return tokens, token_types
 
