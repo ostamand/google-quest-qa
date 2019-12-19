@@ -25,7 +25,7 @@ import pdb
 class DatasetQA(Dataset):
 
     # TODO variable maxlen. for now fixed at 512
-    def __init__(self, df, tokenizer, ids=None, max_len_q_b=150, max_len_q_t=30):
+    def __init__(self, df, tokenizer, ids=None, max_len_q_b=220, max_len_q_t=30):
         super(DatasetQA, self).__init__()
 
         #df = df.iloc[:10] # for dev
@@ -113,7 +113,6 @@ class DatasetQA(Dataset):
 
                         if len(question_title_trunc) + len(question_body_trunc) + len(answer_trunc) > 512-4:
                             # need to truncate title also for now will truncate both
-                            pdb.set_trace()
                             # TODO does not happen in the train dataset
                             question_title_trunc = row['q_t_tokens'][:len_q_t]
                             question_body_trunc =  row['q_b_tokens'][:len_q_b]
@@ -126,7 +125,9 @@ class DatasetQA(Dataset):
                 combined = question_title_trunc + [tokenizer.sep_token_id] + question_body_trunc + [tokenizer.sep_token_id] + answer_trunc + [tokenizer.sep_token_id]
                 tokens[1:1+len(combined)] = combined
 
+                # TODO change token_types. 0 for question, 1 for answer
                 token_types = [0] * (len(question_title_trunc)+2) + (len(question_body_trunc)+len(answer_trunc)+2) * [1] + (512 - len(answer_trunc) - len(question_body_trunc) - len(question_title_trunc)  - 4) * [0]
+                #token_types = [0] * (len(question_title_trunc)+len(question_body_trunc)+3) + (len(answer_trunc)+1) * [1] + (512 - len(answer_trunc) - len(question_body_trunc) - len(question_title_trunc)  - 4) * [0]
 
                 return tokens, token_types
 
@@ -162,9 +163,9 @@ def main(**args):
     # TODO change for bert-base-uncased-qa. ie finetuned LM 
     tokenizer = transformers.BertTokenizer.from_pretrained(args['model_dir'])
 
-    train_dataset = DatasetQA(train_df, tokenizer, tr_ids, max_len_q_b=150)
+    train_dataset = DatasetQA(train_df, tokenizer, tr_ids, max_len_q_b=150, max_len_q_t=30)
 
-    valid_dataset = DatasetQA(train_df, tokenizer, val_ids, max_len_q_b=150)
+    valid_dataset = DatasetQA(train_df, tokenizer, val_ids, max_len_q_b=150, max_len_q_t=30)
 
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args['bs'], shuffle=True)
     valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=args['bs'], shuffle=False)
@@ -207,7 +208,7 @@ def main(**args):
     torch.save(args, os.path.join(out_dir, f"training_args_fold_{args['fold']}.bin"))
 
 # python3  train_bert_on_all.py --do_apex --do_wandb --bs 4 --fold 0 --out_dir test_on_all --dp 0.1
-# python3 train_bert_on_all.py --do_apex --do_wandb --bs 4 --fold 0 --out_dir outputs/test_on_all --dp 0.1 --bert_wd 0.01 --model_dir outputs/qa_finetuning_20_epochs
+# python3 train_bert_on_all.py --do_apex --do_wandb --bs 4 --fold 0 --out_dir outputs/test_on_all --dp 0.1 --bert_wd 0.01 --model_dir model/bert-base-uncased --warmup 0.5 --warmdown 0.5
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs1", default=10, type=int)

@@ -143,7 +143,7 @@ class Trainer():
                 it+=1
                 
             # evaluate 
-            if valid_loader:
+            if valid_loader is not None:
                 metrics = self.evaluate(model, valid_loader)
                 
                 scheduler.step(metrics['spearmanr'])
