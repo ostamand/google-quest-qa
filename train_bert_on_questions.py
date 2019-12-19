@@ -34,7 +34,7 @@ def main(**args):
     texts = train_df.question_body.values
     labels = train_df[targets_question].values.astype(np.float32)
 
-    tokenizer = transformers.BertTokenizer.from_pretrained(os.path.join(args['model_dir'], 'bert-base-uncased'))
+    tokenizer = transformers.BertTokenizer.from_pretrained(args['model_dir'])
     tokens =  apply_tokenizer(tokenizer, texts, args['maxlen'])
 
     if args['fold']:
@@ -100,15 +100,12 @@ def main(**args):
 
     # save trained model and features
 
-    if args['fold']:
-        out_dir = os.path.join(args['model_dir'], f"{args['out_dir']}_fold_{args['fold']}")
-    else: 
-        out_dir = os.path.join(args['model_dir'], f"{args['out_dir']}")
+    out_dir = args['out_dir']
     if not os.path.exists(out_dir):
         os.mkdir(out_dir)
 
-    torch.save(model.state_dict(), os.path.join(out_dir, 'model_state_dict.pth'))
-    torch.save(args, os.path.join(out_dir, 'training_args.bin'))
+    torch.save(model.state_dict(), os.path.join(out_dir, f"model_state_dict_fold_{args['fold']}.pth"))
+    torch.save(args, os.path.join(out_dir, f"training_args_fold_{args['fold']}.bin"))
 
 # example: python train_bert_on_questions.py --do_apex --do_wandb --maxlen 256 --bs 8 --dp 0.1 --fold 0 --out_dir test
 # trained model will be saved to model/test_fold_0
@@ -117,8 +114,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs1", default=10, type=int)
     parser.add_argument("--epochs2", default=5, type=int)
-    parser.add_argument("--model_dir", default="model", type=str)
-    parser.add_argument("--out_dir", default="bert_questions", type=str)
+    parser.add_argument("--model_dir", default="model/bert-base-uncased", type=str)
+    parser.add_argument("--out_dir", default="outputs/bert_questions", type=str)
     parser.add_argument("--data_dir", default="data", type=str)
     parser.add_argument("--fold", default=0, type=int)
     parser.add_argument("--log_dir", default=".logs", type=str)
