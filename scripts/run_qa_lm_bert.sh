@@ -1,4 +1,5 @@
-python ../qa_lm_bert.py \
+
+(cd ..; python3 ../qa_lm_bert.py \
     --train_data_file data/train_qa.txt \
     --output_dir outputs/qa_finetuning \
     --overwrite_output_dir \
@@ -18,4 +19,4 @@ python ../qa_lm_bert.py \
     --learning_rate 5e-5 \
     --num_train_epochs 20 \
     --weight_decay 0.01 \
-    --warmup_steps 500 
+    --warmup_steps 500)
