@@ -48,7 +48,6 @@ class BertOnQA(nn.Module):
         self.bert = transformers.BertModel.from_pretrained(model_dir)
         self.fc_dp = nn.Dropout(kwargs['fc_dp'])
         self.fc = nn.Linear(self.bert.config.hidden_size*2, output_shape)
-        #self.fc = nn.Linear(self.bert.config.hidden_size, output_shape)
         self.avg_pool = nn.AvgPool1d(512)
         self.max_pool = nn.MaxPool1d(512)
 
@@ -77,7 +76,6 @@ class BertOnQA(nn.Module):
         x_avg = self.avg_pool(seq.permute([0,2,1])).squeeze() # bs, 768
         x_max = self.max_pool(seq.permute([0,2,1])).squeeze()
         x = torch.cat([x_avg, x_max], axis=1)
-        #x = x_avg
         # TODO add batchnorm, dropout, linear
         out = self.fc(self.fc_dp(x))
         return out
