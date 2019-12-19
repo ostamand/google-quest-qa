@@ -25,12 +25,13 @@ import pdb
 class DatasetQA(Dataset):
 
     # TODO variable maxlen. for now fixed at 512
-    def __init__(self, df, tokenizer, ids=None, max_len_q_b=150):
+    def __init__(self, df, tokenizer, ids=None, max_len_q_b=150, max_len_q_t=30):
         super(DatasetQA, self).__init__()
 
-        # df = df.iloc[:10] # for dev
+        #df = df.iloc[:10] # for dev
         
         df['q_b_tokens'] = df['question_body'].apply(lambda x: tokenizer.encode(x, max_length=512, add_special_tokens=False))
+        df['q_t_tokens'] = df['question_title'].apply(lambda x: tokenizer.encode(x, max_length=512, add_special_tokens=False))
         df['a_tokens'] = df['answer'].apply(lambda x: tokenizer.encode(x, max_length=512, add_special_tokens=False))
         
         # [PAD]: 0
@@ -82,6 +83,42 @@ class DatasetQA(Dataset):
                 tokens[1:1+len(combined)] = combined
 
                 token_types = [0] * (len(question_trunc)+2) + (len(answer_trunc)+1) * [1] + (512 - len(answer_trunc) - len(question_trunc) - 3) * [0]
+
+                return tokens, token_types
+
+            # token ids:    [CLS] question title [SEP] question body [SEP] answer [SEP] [PAD]
+            # token types:  0     0 ...          0     1 ...         1     1 ...  1     0 ...
+            if how==2:
+                tokens = [tokenizer.cls_token_id] + (512-1)*[tokenizer.pad_token_id] 
+
+                len_q_b = np.min([max_len_q_b, len(row['q_b_tokens'])])
+                len_q_t = np.min([max_len_q_t, len(row['q_t_tokens'])])
+
+                len_q = len_q_b + len_q_t
+
+                if len(row['a_tokens']) >= 512-4-len_q:
+                    # need to truncate the answer and possibly the questions
+                    question_title_trunc = row['q_t_tokens'][:len_q_t]
+                    question_body_trunc =  row['q_b_tokens'][:len_q_b]
+                    answer_trunc = row['a_tokens'][:512-4-len_q_t-len_q_b]
+                else:
+                    # full answer and maximum question length
+                    answer_trunc = row['a_tokens']
+                    
+                    # try with full question body and truncated question title
+                    if len(answer_trunc) + len(row['q_b_tokens']) + len_q_t >= 512-4:
+                        pdb.set_trace()
+                        question_body_trunc = row['q_b_tokens']
+                        question_title_trunc = row['q_t_tokens'][:512-4-len(answer_trunc)-len(question_body_trunc)]
+                    # full question body, question title and answer
+                    else:
+                        question_body_trunc = row['q_b_tokens']
+                        question_title_trunc = row['q_t_tokens']
+
+                combined = question_title_trunc + [tokenizer.sep_token_id] + question_body_trunc + [tokenizer.sep_token_id] + answer_trunc + [tokenizer.sep_token_id]
+                tokens[1:1+len(combined)] = combined
+
+                token_types = [0] * (len(question_title_trunc)+2) + (len(question_body_trunc)+len(answer_trunc)+2) * [1] + (512 - len(answer_trunc) - len(question_body_trunc) - len(question_title_trunc)  - 4) * [0]
 
                 return tokens, token_types
 
@@ -150,7 +187,7 @@ def main(**args):
 
     # TODO try: x = tf.keras.layers.GlobalAveragePooling1D()(sequence_output)
     trainer = Trainer(**args)
-    trainer.train(model, loaders, optimizer, epochs=args['epochs2'], warmup=0.5, warmdown=0.5)
+    trainer.train(model, loaders, optimizer, epochs=args['epochs2'], warmup=args['warmup'], warmdown=args['warmdown'])
 
     # save trained model and features
 
@@ -162,7 +199,7 @@ def main(**args):
     torch.save(args, os.path.join(out_dir, f"training_args_fold_{args['fold']}.bin"))
 
 # python3  train_bert_on_all.py --do_apex --do_wandb --bs 4 --fold 0 --out_dir test_on_all --dp 0.1
-# python3  train_bert_on_all.py --do_apex --do_wandb --bs 4 --fold 0 --out_dir outputs/test_on_all --dp 0.1 --bert_wd 0.01 --model_dir outputs/qa_finetuning_20_epochs 
+# python3 train_bert_on_all.py --do_apex --do_wandb --bs 4 --fold 0 --out_dir outputs/test_on_all --dp 0.1 --bert_wd 0.01 --model_dir outputs/qa_finetuning_20_epochs
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs1", default=10, type=int)
