@@ -92,7 +92,7 @@ def main(**args):
         wandb.init(project=args['project'])
         wandb.watch(model)
     
-    optimizer = transformers.AdamW(model.optimizer_grouped_parameters, lr=1e-2)
+    optimizer = transformers.AdamW(model.optimizer_grouped_parameters, lr=args['lr1'])
 
     if args['do_apex']:
         # TODO tru O2
@@ -107,7 +107,7 @@ def main(**args):
     model.train_all()
 
     for param_group in optimizer.param_groups:
-        param_group['lr'] = 2e-5
+        param_group['lr'] = args['lr2']
 
     trainer = Trainer(**args)
     trainer.train(model, loaders, optimizer, epochs=args['epochs2'], warmup=0.5, warmdown=0.5)
@@ -128,6 +128,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs1", default=10, type=int)
     parser.add_argument("--epochs2", default=5, type=int)
+    parser.add_argument("--lr1", default=1e-2, type=float)
+    parser.add_argument("--lr2", default=2e-5, type=int)
     parser.add_argument("--model_dir", default="model/bert-base-uncased", type=str)
     parser.add_argument("--out_dir", default="outputs/bert_questions", type=str)
     parser.add_argument("--data_dir", default="data", type=str)
