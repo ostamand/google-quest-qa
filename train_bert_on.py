@@ -56,26 +56,30 @@ def main(**args):
         val_ids = pd.read_csv(os.path.join(args['data_dir'], f"valid_ids_fold_{args['fold']}.csv"))['ids'].values
     else:
         # train on almost all the data
-        tr_ids, val_ids = train_test_split(np.arange(labels.shape[0]), test_size=0.05, random_state=args['seed'])
+        tr_ids = np.arange(labels.shape[0])
+        val_ids = None
 
     x_train = tokens[tr_ids]
     y_train = labels[tr_ids]
-
-    x_valid = tokens[val_ids]
-    y_valid = labels[val_ids]
 
     train_dataset = torch.utils.data.TensorDataset(
         torch.tensor(x_train, dtype=torch.long), 
         torch.tensor(y_train, dtype=torch.float32)
     )
 
-    valid_dataset = torch.utils.data.TensorDataset(
-        torch.tensor(x_valid, dtype=torch.long), 
-        torch.tensor(y_valid, dtype=torch.float32)
-    )
-
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args['bs'], shuffle=True)
-    valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=args['bs'], shuffle=False)
+
+    valid_loader = None
+    if val_ids is not None:
+        x_valid = tokens[val_ids]
+        y_valid = labels[val_ids]
+
+        valid_dataset = torch.utils.data.TensorDataset(
+            torch.tensor(x_valid, dtype=torch.long), 
+            torch.tensor(y_valid, dtype=torch.float32)
+        )
+        valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=args['bs'], shuffle=False)
+    
     loaders = {'train': train_loader, 'valid': valid_loader}
 
     device = torch.device(args['device'])
@@ -118,8 +122,10 @@ def main(**args):
     if not os.path.exists(out_dir):
         os.mkdir(out_dir)
 
-    torch.save(model.state_dict(), os.path.join(out_dir, f"model_state_dict_fold_{args['fold']}.pth"))
-    torch.save(args, os.path.join(out_dir, f"training_args_fold_{args['fold']}.bin"))
+    suffix = f"_fold_{args['fold']}" if args['fold'] is not None else ""
+
+    torch.save(model.state_dict(), os.path.join(out_dir, f"model_state_dict{suffix}.pth"))
+    torch.save(args, os.path.join(out_dir, f"training_args{suffix}.bin"))
 
 # example: python train_bert_on_questions.py --do_apex --do_wandb --maxlen 256 --bs 8 --dp 0.1 --fold 0 --out_dir test
 # trained model will be saved to model/test_fold_0
