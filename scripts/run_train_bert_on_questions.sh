@@ -7,6 +7,7 @@
         --dp 0.2 \
         --lr1 1e-2 \
         --fold 0 \
+        --do_head \
         --out_dir outputs/bert_on_questions)
 # TODO:
 # - Try dp 0.2
