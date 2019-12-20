@@ -9,8 +9,11 @@ class BertOnQuestions(nn.Module):
         super(BertOnQuestions, self).__init__()
         
         self.bert = transformers.BertModel.from_pretrained(model_dir)
-        self.pooled_dp = nn.Dropout(kwargs['fc_dp'])
-        self.fc = nn.Linear(self.bert.config.hidden_size, output_shape)
+        self.fc_dp = nn.Dropout(kwargs['fc_dp'])
+        #self.fc = nn.Linear(self.bert.config.hidden_size, output_shape)
+        self.fc = nn.Linear(self.bert.config.hidden_size*2, output_shape)
+        self.avg_pool = nn.AvgPool1d(512)
+        self.max_pool = nn.MaxPool1d(512)
         
         # prepare parameters for optimizer
         no_decay = ['bias', 'LayerNorm.weight']
@@ -21,9 +24,17 @@ class BertOnQuestions(nn.Module):
         ]
         
     def forward(self, input_ids, attention_mask=None, token_type_ids=None):
+        """
         _, pooled = self.bert(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids)
         return self.fc(self.pooled_dp(pooled))
-    
+        """
+        seq, pooled = self.bert(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids)
+        x_avg = self.avg_pool(seq.permute([0,2,1])).squeeze() # bs, 768
+        x_max = self.max_pool(seq.permute([0,2,1])).squeeze()
+        x = torch.cat([x_avg, x_max], axis=1)
+        out = self.fc(self.fc_dp(x))
+        return out
+
     def train_head_only(self):
         for param in self.bert.parameters():
             param.requires_grad = False
