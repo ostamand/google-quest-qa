@@ -16,6 +16,7 @@ from math import floor, ceil
 from scipy.stats import rankdata
 import wandb
 from wandb.keras import WandbCallback
+import transformers
 
 from helpers_tf import go_deterministic
 from callbacks import LROneCycle, SpearmanrCallback
@@ -219,9 +220,9 @@ def main(**args):
     K.clear_session()
     go_deterministic(args['seed'])
 
-    model = bert_model(args['model_dir'])
+    model = bert_model(args['model_dir'], args['maxlen'])
 
-    tags = [] if args['fold'] is None else [args['fold']]
+    tags = [] if args['fold'] is None else [str(args['fold'])]
     tags.append('from_kaggle')
 
     wandb.init(project='google-quest-qa', tags=tags)
@@ -232,15 +233,27 @@ def main(**args):
     valid_inputs = [inputs[i][val_ids] for i in range(3)]
     valid_outputs = outputs[val_ids]
 
-    cb = SpearmanrCallback((valid_inputs, valid_outputs), restore=True)
+    cb = SpearmanrCallback((valid_inputs, valid_outputs), restore=True, do_wandb=True)
 
-    optimizer = tf.keras.optimizers.Adam(learning_rate=3e-5)
+    num_train_steps = ceil(train_inputs[0].shape[0] / args['bs']) // args['accumulation_steps'] * args['epochs']
+    #optimizer = transformers.create_optimizer(args['lr'], num_train_steps, args['warmup_steps'])
+    optimizer = tf.keras.optimizers.Adam(learning_rate=args['lr'])
+
     model.compile(loss='binary_crossentropy', optimizer=optimizer)
-    cycle = LROneCycle(train_inputs[0].shape[0])
+
+    cycle = LROneCycle(num_train_steps, do_wandb=True)
+
+    custom_callback = CustomCallback(
+        valid_data=(valid_inputs, valid_outputs), 
+        test_data=None,
+        batch_size=args['bs'],
+        fold=args['fold']
+    )
 
     callbacks = [
-        cycle, 
-        cb, 
+        # cycle, 
+        # cb, 
+        custom_callback, 
         WandbCallback()
     ]
 
@@ -263,6 +276,9 @@ if __name__ == '__main__':
     parser.add_argument("--fold", default=None, type=int)
     parser.add_argument("--maxlen", default=512, type=int)
     parser.add_argument("--bs", default=8, type=int)
+    parser.add_argument("--lr", default=3e-5, type=float)
+    parser.add_argument("--warmup_steps", default=500, type=int )    
+    parser.add_argument("--accumulation_steps", default=1, type=int)
 
     args = parser.parse_args()
 
