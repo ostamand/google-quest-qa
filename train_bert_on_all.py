@@ -31,9 +31,9 @@ class DatasetQA(Dataset):
 
         #df = df.iloc[:10] # for dev
         
-        #df['q_b_tokens'] = df['question_body'].apply(lambda x: tokenizer.encode(x, max_length=512, add_special_tokens=False))
-        #df['q_t_tokens'] = df['question_title'].apply(lambda x: tokenizer.encode(x, max_length=512, add_special_tokens=False))
-        #df['a_tokens'] = df['answer'].apply(lambda x: tokenizer.encode(x, max_length=512, add_special_tokens=False))
+        df['q_b_tokens'] = df['question_body'].apply(lambda x: tokenizer.encode(x, max_length=512, add_special_tokens=False))
+        df['q_t_tokens'] = df['question_title'].apply(lambda x: tokenizer.encode(x, max_length=512, add_special_tokens=False))
+        df['a_tokens'] = df['answer'].apply(lambda x: tokenizer.encode(x, max_length=512, add_special_tokens=False))
         
         # [PAD]: 0
         # [ANSWER]: 1
@@ -196,7 +196,7 @@ class DatasetQA(Dataset):
 
                 return tokens, token_types
 
-        df['all'] = df.apply(lambda x: process(x, how=3), axis=1)
+        df['all'] = df.apply(lambda x: process(x, how=2), axis=1)
 
         self.labels = df[targets].values.astype(np.float32)
         self.tokens = np.stack(df['all'].apply(lambda x: x[0]).values).astype(np.long)
