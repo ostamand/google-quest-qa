@@ -9,6 +9,4 @@
         --fold 0 \
         --do_answer \
         --out_dir outputs/bert_on_answers)
-# TODO: 
-# --lr1 1e-3
-# --dp 0.2
+# will not do head
