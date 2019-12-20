@@ -2,8 +2,7 @@ import tensorflow as tf
 import tensorflow.keras.backend as K
 import numpy as np
 from scipy.stats import spearmanr
-
-import pdb
+import wandb
 
 # taken from: https://www.kaggle.com/akensert/bert-base-tf2-0-minimalistic
 def compute_spearmanr(trues, preds):
@@ -16,10 +15,10 @@ class SpearmanrCallback(tf.keras.callbacks.Callback):
     """
     TODO: decrease lr when val rho gets worst
     """
-    def __init__(self, val_data, patience_lr=5, patience_early=10, lr_scale=0.1, lr_min=1e-6, restore=True):
+    def __init__(self, val_data, patience_lr=5, patience_early=10, lr_scale=0.1, lr_min=1e-6, restore=True, do_wandb=False):
         self.x_valid, self.y_valid = val_data
         self.patience = {'lr': patience_lr, 'early': patience_early}
-        self.restore = restore
+        self.restore, self.do_wandb = restore, do_wandb
         self.lr_scale, self.lr_min = lr_scale, lr_min
 
         self._reset()
@@ -34,7 +33,11 @@ class SpearmanrCallback(tf.keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs={}):
         y_preds = self.model.predict(self.x_valid, batch_size=8)
         rho_val = compute_spearmanr(self.y_valid, y_preds)
-        
+
+        #TODO add loss
+        if self.do_wandb:
+             wandb.log({'spearmanr/valid': rho_val})
+
         if rho_val > self.best_rho:
             self.best_rho = rho_val
             self.model.save_weights('.tmp/best_weights.h5')
@@ -62,15 +65,16 @@ class SpearmanrCallback(tf.keras.callbacks.Callback):
 class LROneCycle(tf.keras.callbacks.Callback):
     """One Cycle Learning Rate Schedule Callback
     """
-    def __init__(self, total_steps, min_lr=1e-5, up=0.5, down=0.5):
+    def __init__(self, total_steps, min_lr=1e-5, up=0.5, down=0.5, do_wandb=False):
         super(LROneCycle, self).__init__()
         self.up, self.down = up, down
         self.total_steps = total_steps
         self.min_lr = min_lr
+        self.do_wandb = do_wandb
         
         self.step_up = int(self.up * self.total_steps)
         self.step_down = int(self.down * self.total_steps) 
-        
+
         self._lr = None
         
     @property 
@@ -100,6 +104,9 @@ class LROneCycle(tf.keras.callbacks.Callback):
       
         # log lr per step
         self.lrs.append(lr)
+        if self.do_wandb:
+            wandb.log({'train/lr': lr}, step=self.step)
+
         K.set_value(self.model.optimizer.lr, lr)
         
         self.step += 1
