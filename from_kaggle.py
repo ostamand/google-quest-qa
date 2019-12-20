@@ -1,5 +1,5 @@
 #pip install bert-for-tf2
-
+import argparse
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import GroupKFold
@@ -14,12 +14,15 @@ import os
 from scipy.stats import spearmanr
 from math import floor, ceil
 from scipy.stats import rankdata
+import wandb
+from wandb.keras import WandbCallback
+
+from helpers_tf import go_deterministic
+from callbacks import LROneCycle, SpearmanrCallback
+
+import pdb
 
 np.set_printoptions(suppress=True)
-
-MAX_SEQUENCE_LENGTH = 512
-PATH = 'data'
-BERT_PATH = 'model/bert-base-from-tfhub/bert_en_uncased_L-12_H-768_A-12'
 
 def _get_masks(tokens, max_seq_length):
     """Mask for padding"""
@@ -49,7 +52,7 @@ def _get_ids(tokens, tokenizer, max_seq_length):
     input_ids = token_ids + [0] * (max_seq_length-len(token_ids))
     return input_ids
 
-def _trim_input(title, question, answer, max_sequence_length, 
+def _trim_input(tokenizer, title, question, answer, max_sequence_length, 
                 t_max_len=30, q_max_len=239, a_max_len=239):
 
     t = tokenizer.tokenize(title)
@@ -106,7 +109,7 @@ def compute_input_arays(df, columns, tokenizer, max_sequence_length):
     for _, instance in tqdm(df[columns].iterrows()):
         t, q, a = instance.question_title, instance.question_body, instance.answer
 
-        t, q, a = _trim_input(t, q, a, max_sequence_length)
+        t, q, a = _trim_input(tokenizer, t, q, a, max_sequence_length)
 
         ids, masks, segments = _convert_to_bert_inputs(t, q, a, tokenizer, max_sequence_length)
         input_ids.append(ids)
@@ -129,8 +132,8 @@ def compute_spearmanr(trues, preds):
 
 class CustomCallback(tf.keras.callbacks.Callback):
     
-    def __init__(self, valid_data, test_data, batch_size=16, fold=None):
-
+    def __init__(self, valid_data, test_data, batch_size=16, out_dir = '.tmp', fold=None):
+        self.out_dir = out_dir
         self.valid_inputs = valid_data[0]
         self.valid_outputs = valid_data[1]
         self.test_inputs = test_data
@@ -144,99 +147,123 @@ class CustomCallback(tf.keras.callbacks.Callback):
         
     def on_epoch_end(self, epoch, logs={}):
         self.valid_predictions.append(
-            self.model.predict(self.valid_inputs, batch_size=self.batch_size))
+            self.model.predict(
+                self.valid_inputs, 
+                batch_size=self.batch_size
+            )
+        )
         
         rho_val = compute_spearmanr(
-            self.valid_outputs, np.average(self.valid_predictions, axis=0))
+            self.valid_outputs, 
+            np.average(self.valid_predictions, axis=0)
+        )
         
         print("\nvalidation rho: %.4f" % rho_val)
         
+        #TODO only if better
+        #TODO log to wandb
         if self.fold is not None:
-            self.model.save_weights(f'bert-base-{fold}-{epoch}.h5py')
+            self.model.save_weights(f'{self.out_dir}/bert-base-{self.fold}-{epoch}.h5py')
         
-        self.test_predictions.append(
-            self.model.predict(self.test_inputs, batch_size=self.batch_size)
-        )
+        if self.test_inputs is not None:
+            self.test_predictions.append(
+                self.model.predict(self.test_inputs, batch_size=self.batch_size)
+            )
 
-def bert_model():
-    
+def bert_model(model_path, maxlen):
     input_word_ids = tf.keras.layers.Input(
-        (MAX_SEQUENCE_LENGTH,), dtype=tf.int32, name='input_word_ids')
+        (maxlen,), dtype=tf.int32, name='input_word_ids')
     input_masks = tf.keras.layers.Input(
-        (MAX_SEQUENCE_LENGTH,), dtype=tf.int32, name='input_masks')
+        (maxlen,), dtype=tf.int32, name='input_masks')
     input_segments = tf.keras.layers.Input(
-        (MAX_SEQUENCE_LENGTH,), dtype=tf.int32, name='input_segments')
+        (maxlen,), dtype=tf.int32, name='input_segments')
     
-    bert_layer = hub.KerasLayer(BERT_PATH, trainable=True)
+    bert_layer = hub.KerasLayer(model_path, trainable=True)
     
     _, sequence_output = bert_layer([input_word_ids, input_masks, input_segments])
     
     x = tf.keras.layers.GlobalAveragePooling1D()(sequence_output)
+    #x_max = tf.keras.layers.GlobalMaxPooling1D()(sequence_output)
+    #x = tf.keras.layers.Concatenate()([x, x_max])
     x = tf.keras.layers.Dropout(0.2)(x)
     out = tf.keras.layers.Dense(30, activation="sigmoid", name="dense_output")(x)
 
     model = tf.keras.models.Model(
-        inputs=[input_word_ids, input_masks, input_segments], outputs=out)
+        inputs=[input_word_ids, input_masks, input_segments], 
+        outputs=out
+    )
     
     return model    
-        
-def train_and_predict(model, train_data, valid_data, test_data, 
-                      learning_rate, epochs, batch_size, loss_function, fold):
-        
-    custom_callback = CustomCallback(
-        valid_data=(valid_data[0], valid_data[1]), 
-        test_data=test_data,
-        batch_size=batch_size,
-        fold=None)
 
-    optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
-    model.compile(loss=loss_function, optimizer=optimizer)
-    model.fit(train_data[0], train_data[1], epochs=epochs, 
-              batch_size=batch_size, callbacks=[custom_callback])
-    
-    return custom_callback
+def main(**args):
+    if not os.path.exists(args['out_dir']):
+        os.mkdir(args['out_dir'])
 
-def main():
-    tokenizer = tokenization.FullTokenizer(BERT_PATH+'/assets/vocab.txt', True)
+    tokenizer = tokenization.FullTokenizer(os.path.join(args['model_dir'], 'assets/vocab.txt'), True)
     
-    df_train = pd.read_csv(PATH+'train.csv')
-    df_test = pd.read_csv(PATH+'test.csv')
-    df_sub = pd.read_csv(PATH+'sample_submission.csv')
+    df_train = pd.read_csv(os.path.join(args['data_dir'], 'train.csv'))
+    df_test = pd.read_csv(os.path.join(args['data_dir'], 'test.csv'))
+    df_sub = pd.read_csv(os.path.join(args['data_dir'], 'sample_submission.csv'))
 
     output_categories = list(df_train.columns[11:])
     input_categories = list(df_train.columns[[1,2,5]])
 
-    gkf = GroupKFold(n_splits=5).split(X=df_train.question_body, groups=df_train.question_body)
-
     outputs = compute_output_arrays(df_train, output_categories)
-    inputs = compute_input_arays(df_train, input_categories, tokenizer, MAX_SEQUENCE_LENGTH)
-    test_inputs = compute_input_arays(df_test, input_categories, tokenizer, MAX_SEQUENCE_LENGTH)
+    inputs = compute_input_arays(df_train, input_categories, tokenizer, args['maxlen'])
+    test_inputs = compute_input_arays(df_test, input_categories, tokenizer, args['maxlen'])
 
-    histories = []
-    for fold, (train_idx, valid_idx) in enumerate(gkf):
-        K.clear_session()
-        model = bert_model()
+    if args['fold'] is not None:
+        tr_ids =  pd.read_csv(os.path.join(args['data_dir'],  f"train_ids_fold_{args['fold']}.csv"))['ids'].values
+        val_ids = pd.read_csv(os.path.join(args['data_dir'],  f"valid_ids_fold_{args['fold']}.csv"))['ids'].values
 
-        train_inputs = [inputs[i][train_idx] for i in range(3)]
-        train_outputs = outputs[train_idx]
+    K.clear_session()
+    go_deterministic(args['seed'])
 
-        valid_inputs = [inputs[i][valid_idx] for i in range(3)]
-        valid_outputs = outputs[valid_idx]
+    model = bert_model(args['model_dir'])
 
-        # history contains two lists of valid and test preds respectively:
-        #  [valid_predictions_{fold}, test_predictions_{fold}]
-        history = train_and_predict(
-            model, 
-            train_data=(train_inputs, train_outputs), 
-            valid_data=(valid_inputs, valid_outputs),
-            test_data=test_inputs, 
-            learning_rate=3e-5, 
-            epochs=4, 
-            batch_size=8,
-            loss_function='binary_crossentropy', 
-            fold=fold
-        )
-        histories.append(history)
+    tags = [] if args['fold'] is None else [args['fold']]
+    tags.append('from_kaggle')
 
+    wandb.init(project='google-quest-qa', tags=tags)
+
+    train_inputs = [inputs[i][tr_ids] for i in range(3)]
+    train_outputs = outputs[tr_ids]
+
+    valid_inputs = [inputs[i][val_ids] for i in range(3)]
+    valid_outputs = outputs[val_ids]
+
+    cb = SpearmanrCallback((valid_inputs, valid_outputs), restore=True)
+
+    optimizer = tf.keras.optimizers.Adam(learning_rate=3e-5)
+    model.compile(loss='binary_crossentropy', optimizer=optimizer)
+    cycle = LROneCycle(train_inputs[0].shape[0])
+
+    callbacks = [
+        cycle, 
+        cb, 
+        WandbCallback()
+    ]
+
+    history = model.fit(
+        train_inputs, 
+        train_outputs, 
+        epochs=args['epochs'], 
+        batch_size=args['bs'], 
+        callbacks=callbacks
+    )
+
+# python3 from_kaggle.py --fold 0
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--epochs", default=5, type=int)
+    parser.add_argument("--seed", default=42, type=int)
+    parser.add_argument("--data_dir", default="data", type=str)
+    parser.add_argument("--out_dir", default="outputs/baseline_on_all", type=str)
+    parser.add_argument("--model_dir", default="model/bert_en_uncased_L-12_H-768_A-12", type=str)
+    parser.add_argument("--fold", default=None, type=int)
+    parser.add_argument("--maxlen", default=512, type=int)
+    parser.add_argument("--bs", default=8, type=int)
+
+    args = parser.parse_args()
+
+    main(**args.__dict__)
