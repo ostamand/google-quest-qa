@@ -2,6 +2,7 @@ import argparse
 import os
 import gc
 from typing import List
+import math
 
 import torch
 import torch.nn as nn
@@ -30,9 +31,9 @@ class DatasetQA(Dataset):
 
         #df = df.iloc[:10] # for dev
         
-        df['q_b_tokens'] = df['question_body'].apply(lambda x: tokenizer.encode(x, max_length=512, add_special_tokens=False))
-        df['q_t_tokens'] = df['question_title'].apply(lambda x: tokenizer.encode(x, max_length=512, add_special_tokens=False))
-        df['a_tokens'] = df['answer'].apply(lambda x: tokenizer.encode(x, max_length=512, add_special_tokens=False))
+        #df['q_b_tokens'] = df['question_body'].apply(lambda x: tokenizer.encode(x, max_length=512, add_special_tokens=False))
+        #df['q_t_tokens'] = df['question_title'].apply(lambda x: tokenizer.encode(x, max_length=512, add_special_tokens=False))
+        #df['a_tokens'] = df['answer'].apply(lambda x: tokenizer.encode(x, max_length=512, add_special_tokens=False))
         
         # [PAD]: 0
         # [ANSWER]: 1
@@ -131,7 +132,71 @@ class DatasetQA(Dataset):
 
                 return tokens, token_types
 
-        df['all'] = df.apply(lambda x: process(x, how=2), axis=1)
+            if how == 3:
+                max_sequence_length=512
+                t_max_len=30
+                q_max_len=239
+                a_max_len=239
+
+                t = tokenizer.tokenize(row['question_title'])
+                q = tokenizer.tokenize(row['question_body'])
+                a = tokenizer.tokenize(row['answer'])
+    
+                t_len = len(t)
+                q_len = len(q)
+                a_len = len(a)
+
+                if (t_len+q_len+a_len+4) > max_sequence_length:
+                    
+                    if t_max_len > t_len:
+                        t_new_len = t_len
+                        a_max_len = a_max_len + math.floor((t_max_len - t_len)/2)
+                        q_max_len = q_max_len + math.ceil((t_max_len - t_len)/2)
+                    else:
+                        t_new_len = t_max_len
+                
+                    if a_max_len > a_len:
+                        a_new_len = a_len 
+                        q_new_len = q_max_len + (a_max_len - a_len)
+                    elif q_max_len > q_len:
+                        a_new_len = a_max_len + (q_max_len - q_len)
+                        q_new_len = q_len
+                    else:
+                        a_new_len = a_max_len
+                        q_new_len = q_max_len
+                        
+                    if t_new_len+a_new_len+q_new_len+4 != max_sequence_length:
+                        raise ValueError("New sequence length should be %d, but is %d" 
+                                        % (max_sequence_length, (t_new_len+a_new_len+q_new_len+4)))
+                    
+                    t = t[:t_new_len]
+                    q = q[:q_new_len]
+                    a = a[:a_new_len]
+
+                stoken = ["[CLS]"] + t + ["[SEP]"] + q + ["[SEP]"] + a + ["[SEP]"]
+                tokens = tokenizer.convert_tokens_to_ids(stoken)
+                tokens = tokens + [0] * (max_sequence_length-len(tokens))
+
+                # token types
+
+                if len(tokens)>max_sequence_length:
+                    raise IndexError("Token length more than max seq length!")
+
+                segments = []
+                first_sep = True
+                current_segment_id = 0
+                for token in stoken:
+                    segments.append(current_segment_id)
+                    if token == "[SEP]":
+                        if first_sep:
+                            first_sep = False 
+                        else:
+                            current_segment_id = 1
+                token_types = segments + [0] * (max_sequence_length - len(stoken))
+
+                return tokens, token_types
+
+        df['all'] = df.apply(lambda x: process(x, how=3), axis=1)
 
         self.labels = df[targets].values.astype(np.float32)
         self.tokens = np.stack(df['all'].apply(lambda x: x[0]).values).astype(np.long)
