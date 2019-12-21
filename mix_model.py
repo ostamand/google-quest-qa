@@ -127,7 +127,7 @@ class MixModelDataset(torch.utils.data.Dataset):
 
 def do_evaluate(model, loader, with_labels=False):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    lossf = nn.CrossEntropyLoss()
+    lossf = nn.BCEWithLogitsLoss()
 
     model.eval()
 
@@ -144,7 +144,6 @@ def do_evaluate(model, loader, with_labels=False):
             )
             all_preds.append(torch.sigmoid(out).detach().cpu().numpy())
             if with_labels:
-                pdb.set_trace()
                 loss += lossf(out, labels.to(device)).item()
                 all_labels.append(labels.numpy())
 
@@ -158,7 +157,7 @@ def do_evaluate(model, loader, with_labels=False):
 
     return all_preds
 
-def do_training(model, loaders, optimizer, params):
+def do_training(model, loaders, optimizer, params, do_wandb=False):
     p = params
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
      
@@ -168,8 +167,8 @@ def do_training(model, loaders, optimizer, params):
     optimizer.zero_grad()
     running_loss = None
 
-    scheduler = ReduceLROnPlateau(optimizer, 'max', patience=2, verbose=True, factor=0.1)
-    early_stopping = EarlyStoppingSimple(model, patience=5, min_delta=0)  
+    scheduler = ReduceLROnPlateau(optimizer, 'max', patience=5, verbose=True, factor=0.1)
+    early_stopping = EarlyStoppingSimple(model, patience=10, min_delta=0)  
 
     lr_scheduler = LearningRateWithUpDown(
         optimizer, 
@@ -182,10 +181,15 @@ def do_training(model, loaders, optimizer, params):
 
     model.to(device)
 
+    if do_wandb:
+        wandb.init(project='google-quest-qa', tags=["mix_model"])
+        wandb.watch(model, log=None)
+
     it = 1 # global steps
 
     all_valid_preds = []
     all_test_preds = []
+    val_rhos = []
     for epoch_i in range(p['epochs']):
         model.train()
 
@@ -219,6 +223,9 @@ def do_training(model, loaders, optimizer, params):
             logs = {}
             logs['lr/train'] = optimizer.param_groups[0]['lr']
             logs['loss/train'] = loss.item() / bs
+            
+            if do_wandb:
+                wandb.log(logs, step=it)
 
             if running_loss:
                 running_loss = 0.98 * running_loss + 0.02 * loss.item() / bs
@@ -239,10 +246,16 @@ def do_training(model, loaders, optimizer, params):
             scheduler.step(rho_val)
             early_stopping.step(rho_val)
 
+            logs = {}
             logs['spearmanr/valid'] = rho_val
             logs['loss/valid'] = loss_val
-            # 
-            print(f"rho: {rho:.4f} (val), loss: {loss_val:.4f} (val)")
+
+            if do_wandb:
+                wandb.log(logs)
+
+            val_rhos.append(rho_val)
+
+            print(f"rho: {rho_val:.4f} (val), loss: {loss_val:.4f} (val)")
 
         if loaders['test']:
             test_preds = do_evaluate(model, loaders['test'], with_labels=False)
@@ -252,7 +265,7 @@ def do_training(model, loaders, optimizer, params):
         early_stopping.restore()
 
     # TODO return average over all epochs
-    return test_preds
+    return test_preds, np.max(val_rhos)
 
 def main(params):
     p = params 
@@ -261,6 +274,7 @@ def main(params):
     test_df = pd.read_csv(os.path.join(params['data_dir'], 'test.csv'))
 
     test_preds_per_fold = []
+    val_rhos = []
 
     for fold_n in range(5):
         tr_ids = pd.read_csv(os.path.join(p['data_dir'],  f"train_ids_fold_{fold_n}.csv"))['ids'] # TODO remove for dev
@@ -280,22 +294,45 @@ def main(params):
 
         model = MixModel(qa_fc.shape[1] + qa_avg_pool.shape[1]+ cat.shape[1])
 
-        optimizer = torch.optim.Adam(model.parameters(), 1e-3)
+        optimizer = torch.optim.Adam(model.parameters(), p['lr'])
 
         # do training 
-        test_preds = do_training(model, loaders, optimizer, params)
+        do_wandb = True if fold_n == 0 else False
+        test_preds, val_rho = do_training(model, loaders, optimizer, params, do_wandb=do_wandb)
 
+        val_rhos.append(val_rho)
         test_preds_per_fold.append(test_preds)
+
+        # cleanup
+
+        del model
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    print(val_rhos)
+    print(f"rho val: {np.mean(val_rhos):.4f} += {np.std(val_rhos):.4f}")
 
     return test_preds
 
+"""
+
+lr 1e-5:                    0.3943 += 0.0033 
+lr 1e-4:                    0.3980 += 0.0046
+change patience:            0.3986 += 0.0043
+0.1 warmup                  0.3986 += 0.0042
+0.5/0.5                     0.3986 += 0.0037
+bs 64                       0.3973 += 0.0039
+bs 16                       0.3991 += 0.0044
+bs 8                        
+"""
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--bs", default=32, type=int)
-    parser.add_argument("--epochs", default=10, type=int)
+    parser.add_argument("--bs", default=16, type=int)
+    parser.add_argument("--epochs", default=100, type=int)
+    parser.add_argument("--lr", default=1e-4, type=int)
     parser.add_argument("--seed", default=42, type=int)
-    parser.add_argument("--warmup", default=0., type=float)
-    parser.add_argument("--warmdown", default=0.1, type=float)
+    parser.add_argument("--warmup", default=0.5, type=float)
+    parser.add_argument("--warmdown", default=0.5, type=float)
     parser.add_argument("--data_dir", default="data", type=str)
     parser.add_argument("--model_dir", default="model", type=str)
     parser.add_argument("--ckpt_dir", default="outputs/bert_on_all", type=str)
