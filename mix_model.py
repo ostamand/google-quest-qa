@@ -4,6 +4,8 @@ import argparse
 import re
 import pickle
 from urllib.parse import urlparse
+import os 
+import pickle
 
 import pandas as pd
 import numpy as np
@@ -29,7 +31,7 @@ Requirements:
 
 model/bert-base-uncased
 outputs/bert_on_all
-
+.tmp
 """
 
 class MixModel(nn.Module):
@@ -45,11 +47,11 @@ class MixModel(nn.Module):
 
 class MixModelDataset(torch.utils.data.Dataset):
 
-    def __init__(self, model_dir, ckpt_dir, df, fold_n, enc=None, device='cuda'):
+    def __init__(self, model_dir, ckpt_dir, df, fold_n, enc=None, cache_file=None, device='cuda'):
         super(MixModelDataset, self).__init__()
         self.df, self.fold_n = df, fold_n
         self.enc = enc
-        self.model_dir, self.ckpt_dir = model_dir, ckpt_dir
+        self.model_dir, self.ckpt_dir, self.cache_file = model_dir, ckpt_dir, cache_file
 
         self.device = torch.device(device)
 
@@ -57,6 +59,13 @@ class MixModelDataset(torch.utils.data.Dataset):
 
     def _get_data(self):
         # QA data 
+        path_cache_file = os.path.join('.tmp', self.cache_file)
+
+        if self.cache_file is not None:
+            if os.path.exists(path_cache_file):
+                with open(path_cache_file, 'rb') as f:
+                    self.labels, self.qa_fc, self.qa_avg_pool, self.category = pickle.load(f)
+                return
 
         tokenizer = transformers.BertTokenizer.from_pretrained(os.path.join(self.model_dir, 'bert-base-uncased'))
         dataset = DatasetQA(self.df, tokenizer, max_len_q_b=150, max_len_q_t=30)
@@ -105,6 +114,10 @@ class MixModelDataset(torch.utils.data.Dataset):
 
         self.category = self.enc.transform(self.df[['category', 'netloc']].values).toarray().astype(np.float32)
 
+        if self.cache_file is not None:
+            with open(path_cache_file, 'wb') as f:
+                pickle.dump((self.labels, self.qa_fc, self.qa_avg_pool, self.category), f)
+
     def __len__(self):
         return len(self.df)
 
@@ -112,10 +125,15 @@ class MixModelDataset(torch.utils.data.Dataset):
         labels = self.labels[idx] if self.labels is not None else []
         return self.qa_fc[idx], self.qa_avg_pool[idx], self.category[idx], labels
 
-def do_evaluate(model, loader):
+def do_evaluate(model, loader, with_labels=False):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    lossf = nn.CrossEntropyLoss()
+
     model.eval()
-    preds = []
+
+    all_preds = []
+    all_labels = []
+    loss = 0
     with torch.no_grad():
         for batch_i, batch in enumerate(loader):
             qa_fc, qa_avg_pool, category, labels = batch
@@ -124,10 +142,21 @@ def do_evaluate(model, loader):
                 qa_avg_pool.to(device), 
                 category.to(device)
             )
-            preds.append(out.detach().cpu().numpy())
-    model.train()
-    return np.vstack(preds)
+            all_preds.append(torch.sigmoid(out).detach().cpu().numpy())
+            if with_labels:
+                pdb.set_trace()
+                loss += lossf(out, labels.to(device)).item()
+                all_labels.append(labels.numpy())
 
+    model.train()
+
+    all_preds = np.vstack(all_preds)
+
+    if with_labels:
+        all_labels = np.vstack(all_labels)
+        return all_preds, (all_labels, loss / len(all_labels))
+
+    return all_preds
 
 def do_training(model, loaders, optimizer, params):
     p = params
@@ -155,8 +184,8 @@ def do_training(model, loaders, optimizer, params):
 
     it = 1 # global steps
 
-    valid_preds = []
-    test_preds = []
+    all_valid_preds = []
+    all_test_preds = []
     for epoch_i in range(p['epochs']):
         model.train()
 
@@ -201,21 +230,29 @@ def do_training(model, loaders, optimizer, params):
             it+=1
         
         if loaders['valid']:
-            valid_preds = do_evaluate(model, loaders['valid'])
-                
-            #scheduler.step(metrics['spearmanr'])
-            #early_stopping.step(metrics['spearmanr'])
+            valid_preds, (labels, loss_val) = do_evaluate(model, loaders['valid'], with_labels=True)
+            all_valid_preds.append(valid_preds)
+            # TODO average over epochs
+            # TODO log to wandb
+            rho_val = compute_spearmanr(labels, valid_preds)
 
-            #logs['loss/valid'] = metrics['loss']
-            #logs['spearmanr/valid'] = metrics['spearmanr']
-                
-            #print(f"rho: {metrics['spearmanr']:.4f} (val), loss: {metrics['loss']:.4f} (val)")
+            scheduler.step(rho_val)
+            early_stopping.step(rho_val)
+
+            logs['spearmanr/valid'] = rho_val
+            logs['loss/valid'] = loss_val
+            # 
+            print(f"rho: {rho:.4f} (val), loss: {loss_val:.4f} (val)")
 
         if loaders['test']:
-            test_preds = do_evaluate(model, loaders['test'])
+            test_preds = do_evaluate(model, loaders['test'], with_labels=False)
+            all_test_preds.append(test_preds)
         
     if loaders['valid']:
         early_stopping.restore()
+
+    # TODO return average over all epochs
+    return test_preds
 
 def main(params):
     p = params 
@@ -223,15 +260,16 @@ def main(params):
     train_df = pd.read_csv(os.path.join(params['data_dir'], 'train.csv'))
     test_df = pd.read_csv(os.path.join(params['data_dir'], 'test.csv'))
 
-    all_test_preds = []
+    test_preds_per_fold = []
 
     for fold_n in range(5):
-        tr_ids = pd.read_csv(os.path.join(p['data_dir'],  f"train_ids_fold_{fold_n}.csv"))['ids'].values[:100] # TODO remove for dev
-        val_ids = pd.read_csv(os.path.join(p['data_dir'], f"valid_ids_fold_{fold_n}.csv"))['ids'].values[:100]
+        tr_ids = pd.read_csv(os.path.join(p['data_dir'],  f"train_ids_fold_{fold_n}.csv"))['ids'] # TODO remove for dev
+        val_ids = pd.read_csv(os.path.join(p['data_dir'], f"valid_ids_fold_{fold_n}.csv"))['ids']
 
-        train_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], train_df.iloc[tr_ids].copy(), fold_n)
-        valid_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], train_df.iloc[val_ids].copy(), fold_n, enc=train_dataset.enc)
-        test_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], test_df.copy(), fold_n, enc=train_dataset.enc)
+        #TODO add cache file
+        train_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], train_df.iloc[tr_ids].copy(), fold_n, cache_file=f"mix_train_fold_{fold_n}.pickle")
+        valid_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], train_df.iloc[val_ids].copy(), fold_n, enc=train_dataset.enc, cache_file=f"mix_valid_fold_{fold_n}.pickle")
+        test_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], test_df.copy(), fold_n, enc=train_dataset.enc, cache_file=f"mix_test_fold_{fold_n}.pickle")
 
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=p['bs'], shuffle=True)
         valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=p['bs'], shuffle=False)
@@ -247,7 +285,7 @@ def main(params):
         # do training 
         test_preds = do_training(model, loaders, optimizer, params)
 
-        all_test_preds.append(test_preds)
+        test_preds_per_fold.append(test_preds)
 
     return test_preds
 
@@ -256,8 +294,8 @@ if __name__ == '__main__':
     parser.add_argument("--bs", default=32, type=int)
     parser.add_argument("--epochs", default=10, type=int)
     parser.add_argument("--seed", default=42, type=int)
-    parser.add_argument("--warmup", default=0.5, type=float)
-    parser.add_argument("--warmdown", default=0.5, type=float)
+    parser.add_argument("--warmup", default=0., type=float)
+    parser.add_argument("--warmdown", default=0.1, type=float)
     parser.add_argument("--data_dir", default="data", type=str)
     parser.add_argument("--model_dir", default="model", type=str)
     parser.add_argument("--ckpt_dir", default="outputs/bert_on_all", type=str)
