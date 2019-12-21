@@ -213,7 +213,7 @@ class DatasetQA(Dataset):
     def __getitem__(self, idx):
         return self.tokens[idx], self.token_types[idx], self.labels[idx]
 
-#@email_sender(recipient_emails=["olivier.st.amand.1@gmail.com"], sender_email="yellow.bhaji@gmail.com")
+@email_sender(recipient_emails=["olivier.st.amand.1@gmail.com"], sender_email="yellow.bhaji@gmail.com")
 def main(**args):
     # data
     train_df = pd.read_csv(os.path.join(args['data_dir'], 'train.csv'))
