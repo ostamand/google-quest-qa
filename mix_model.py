@@ -31,8 +31,15 @@ outputs/bert_on_all
 
 """
 
-def get_model(input_shape):
-    pass
+class MixModel(nn.Module):
+
+    def __init__(self, n_features):
+        super(MixModel, self).__init__()
+        self.fc = nn.Linear(n_features)
+
+    def forward(self, qa_fc, qa_avg_pool, category):
+        x = torch.cat([qa_fc, qa_avg_pool, category], dim=1)
+        out = self.fc(x)
 
 class MixModelDataset(torch.utils.data.Dataset):
 
@@ -186,7 +193,6 @@ def do_training(model, loaders, optimizer, params):
     if loaders['valid']:
         early_stopping.restore()
 
-
 def main(params):
     p = params 
 
@@ -210,7 +216,9 @@ def main(params):
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=p['bs'], shuffle=False)            
         loaders = {'train': train_loader, 'valid': valid_loader, 'test': test_loader}
 
-        # model = get_model(next(iter(train_loader)[0].shape[0]))
+        qa_fc, qa_avg_pool, cat, _ = next(iter(train_loader))
+
+        model = MixModel(qa_fc.shape[1] + qa_avg_pool.shape[1], cat.shape[1])
 
         # do training 
         test_preds = do_training(model, loaders, params)
