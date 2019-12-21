@@ -36,8 +36,11 @@ outputs/bert_on_all
 
 class MixModel(nn.Module):
 
-    def __init__(self, n_features):
+    def __init__(self, qa_fc_size, qa_avg_pool_size, category_size):
         super(MixModel, self).__init__()
+
+        n_features = qa_fc_size + qa_avg_pool_size + category_size
+
         self.fc = nn.Linear(n_features, len(targets))
 
     def forward(self, qa_fc, qa_avg_pool, category):
@@ -292,7 +295,7 @@ def main(params):
 
         qa_fc, qa_avg_pool, cat, _ = next(iter(train_loader))
 
-        model = MixModel(qa_fc.shape[1] + qa_avg_pool.shape[1]+ cat.shape[1])
+        model = MixModel(qa_fc.shape[1], qa_avg_pool.shape[1], cat.shape[1])
 
         optimizer = torch.optim.Adam(model.parameters(), p['lr'])
 
