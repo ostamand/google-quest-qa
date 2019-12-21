@@ -35,11 +35,12 @@ class MixModel(nn.Module):
 
     def __init__(self, n_features):
         super(MixModel, self).__init__()
-        self.fc = nn.Linear(n_features)
+        self.fc = nn.Linear(n_features, len(targets))
 
     def forward(self, qa_fc, qa_avg_pool, category):
         x = torch.cat([qa_fc, qa_avg_pool, category], dim=1)
         out = self.fc(x)
+        return out 
 
 class MixModelDataset(torch.utils.data.Dataset):
 
@@ -83,8 +84,8 @@ class MixModelDataset(torch.utils.data.Dataset):
                 outs = model(tokens.to(self.device), attention_mask=(tokens > 0).to(self.device), token_type_ids=token_types.to(self.device))
                 qa_fc.append(outs.detach().cpu().numpy())
         
-        self.qa_fc = np.vstack(qa_fc)
-        self.qa_avg_pool = np.vstack(qa_avg_pool)
+        self.qa_fc = np.vstack(qa_fc).astype(np.float32)
+        self.qa_avg_pool = np.vstack(qa_avg_pool).astype(np.float32)
 
         h.remove()
         del model
@@ -101,10 +102,10 @@ class MixModelDataset(torch.utils.data.Dataset):
             self.enc = OneHotEncoder(handle_unknown='ignore')
             self.enc.fit(self.df[['category', 'netloc']].values)
 
-        self.category = self.enc.transform(self.df[['category', 'netloc']].values).toarray()
+        self.category = self.enc.transform(self.df[['category', 'netloc']].values).toarray().astype(np.float32)
 
     def __len__(self):
-        return len(df)
+        return len(self.df)
 
     def __getitem__(self, idx):
         labels = self.labels[idx] if self.labels is not None else []
@@ -114,6 +115,7 @@ def do_evaluate(model, loader):
     pass
 
 def do_training(model, loaders, optimizer, params):
+    pdb.set_trace()
     p = params
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
      
@@ -216,8 +218,6 @@ def main(params):
         valid_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], train_df.iloc[val_ids].copy(), fold_n, enc=train_dataset.enc)
         test_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], test_df.copy(), fold_n, enc=train_dataset.enc)
 
-        pdb.set_trace()
-
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=p['bs'], shuffle=True)
         valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=p['bs'], shuffle=False)
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=p['bs'], shuffle=False)            
@@ -225,7 +225,7 @@ def main(params):
 
         qa_fc, qa_avg_pool, cat, _ = next(iter(train_loader))
 
-        model = MixModel(qa_fc.shape[1] + qa_avg_pool.shape[1], cat.shape[1])
+        model = MixModel(qa_fc.shape[1] + qa_avg_pool.shape[1]+ cat.shape[1])
 
         # do training 
         test_preds = do_training(model, loaders, params)
