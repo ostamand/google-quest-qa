@@ -9,6 +9,7 @@ import pandas as pd
 import numpy as np
 import torch
 import torch.nn as nn
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
 import wandb
 import transformers
@@ -112,10 +113,23 @@ class MixModelDataset(torch.utils.data.Dataset):
         return self.qa_fc[idx], self.qa_avg_pool[idx], self.category[idx], labels
 
 def do_evaluate(model, loader):
-    pass
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model.eval()
+    preds = []
+    with torch.no_grad():
+        for batch_i, batch in enumerate(loader):
+            qa_fc, qa_avg_pool, category, labels = batch
+            out = model(
+                qa_fc.to(device), 
+                qa_avg_pool.to(device), 
+                category.to(device)
+            )
+            preds.append(out.detach().cpu().numpy())
+    model.train()
+    return np.vstack(preds)
+
 
 def do_training(model, loaders, optimizer, params):
-    pdb.set_trace()
     p = params
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
      
@@ -143,7 +157,7 @@ def do_training(model, loaders, optimizer, params):
 
     valid_preds = []
     test_preds = []
-    for epoch_i in range(epochs):
+    for epoch_i in range(p['epochs']):
         model.train()
 
         if early_stopping.training_done:
@@ -173,9 +187,10 @@ def do_training(model, loaders, optimizer, params):
             optimizer.zero_grad()
 
             # log
-            logs = {'step': it}
+            logs = {}
             logs['lr/train'] = optimizer.param_groups[0]['lr']
             logs['loss/train'] = loss.item() / bs
+
             if running_loss:
                 running_loss = 0.98 * running_loss + 0.02 * loss.item() / bs
             else:
@@ -186,7 +201,7 @@ def do_training(model, loaders, optimizer, params):
             it+=1
         
         if loaders['valid']:
-            valid_preds = evaluate(model, loaders['valid'])
+            valid_preds = do_evaluate(model, loaders['valid'])
                 
             #scheduler.step(metrics['spearmanr'])
             #early_stopping.step(metrics['spearmanr'])
@@ -197,7 +212,7 @@ def do_training(model, loaders, optimizer, params):
             #print(f"rho: {metrics['spearmanr']:.4f} (val), loss: {metrics['loss']:.4f} (val)")
 
         if loaders['test']:
-            test_preds = evaluate(model, loaders['test'])
+            test_preds = do_evaluate(model, loaders['test'])
         
     if loaders['valid']:
         early_stopping.restore()
@@ -227,8 +242,10 @@ def main(params):
 
         model = MixModel(qa_fc.shape[1] + qa_avg_pool.shape[1]+ cat.shape[1])
 
+        optimizer = torch.optim.Adam(model.parameters(), 1e-3)
+
         # do training 
-        test_preds = do_training(model, loaders, params)
+        test_preds = do_training(model, loaders, optimizer, params)
 
         all_test_preds.append(test_preds)
 
@@ -238,6 +255,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--bs", default=32, type=int)
     parser.add_argument("--epochs", default=10, type=int)
+    parser.add_argument("--seed", default=42, type=int)
     parser.add_argument("--warmup", default=0.5, type=float)
     parser.add_argument("--warmdown", default=0.5, type=float)
     parser.add_argument("--data_dir", default="data", type=str)
