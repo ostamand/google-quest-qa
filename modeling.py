@@ -57,7 +57,7 @@ class BertOnQA(nn.Module):
         super(BertOnQA, self).__init__()
         
         self.bert = transformers.BertModel.from_pretrained(model_dir)
-        self.fc_dp = nn.Dropout(kwargs['fc_dp'])
+        self.fc_dp = nn.Dropout(kwargs['fc_dp'] if 'fc_dp' in kwargs else 0.)
         self.fc = nn.Linear(self.bert.config.hidden_size*2, output_shape)
         self.avg_pool = nn.AvgPool1d(512)
         self.max_pool = nn.MaxPool1d(512)
@@ -76,9 +76,9 @@ class BertOnQA(nn.Module):
         # prepare parameters for optimizer
         no_decay = ['bias', 'LayerNorm.weight']
         self.optimizer_grouped_parameters = [
-            {'params': [p for n, p in self.bert.named_parameters() if not any(nd in n for nd in no_decay)], 'weight_decay': kwargs['bert_wd']},
+            {'params': [p for n, p in self.bert.named_parameters() if not any(nd in n for nd in no_decay)], 'weight_decay': kwargs['bert_wd'] if 'bert_wd' in kwargs else 0.},
             {'params': [p for n, p in self.bert.named_parameters() if any(nd in n for nd in no_decay)], 'weight_decay': 0.0},
-            {'params': [p for n, p in self.fc.named_parameters()], 'weight_decay': kwargs['fc_wd']}
+            {'params': [p for n, p in self.fc.named_parameters()], 'weight_decay': kwargs['fc_wd'] if 'fc_wd' in kwargs else 0.}
         ]
         
     def forward(self, input_ids, attention_mask=None, token_type_ids=None):
