@@ -198,21 +198,28 @@ class DatasetQA(Dataset):
 
         df['all'] = df.apply(lambda x: process(x, how=2), axis=1)
 
-        self.labels = df[targets].values.astype(np.float32)
+        if targets[0] in df.columns:
+            self.labels = df[targets].values.astype(np.float32)
+        else: 
+            self.labels = None
+
         self.tokens = np.stack(df['all'].apply(lambda x: x[0]).values).astype(np.long)
         self.token_types = np.stack(df['all'].apply(lambda x: x[1]).values).astype(np.long)
 
         if ids is not None:
-            self.labels = self.labels[ids]
+            if self.labels is not None:
+                self.labels = self.labels[ids]
+
             self.tokens = self.tokens[ids]
             self.token_types = self.token_types[ids]
 
     def __len__(self):
-        return self.labels.shape[0]
+        return self.tokens.shape[0]
 
     def __getitem__(self, idx):
-        return self.tokens[idx], self.token_types[idx], self.labels[idx]
-
+        labels = self.labels[idx] if self.labels is not None else []
+        return self.tokens[idx], self.token_types[idx], labels
+            
 @email_sender(recipient_emails=["olivier.st.amand.1@gmail.com"], sender_email="yellow.bhaji@gmail.com")
 def main(**args):
     # data

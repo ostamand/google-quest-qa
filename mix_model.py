@@ -58,6 +58,8 @@ class MixModelDataset(torch.utils.data.Dataset):
 
         tokenizer = transformers.BertTokenizer.from_pretrained(os.path.join(self.model_dir, 'bert-base-uncased'))
         dataset = DatasetQA(self.df, tokenizer, max_len_q_b=150, max_len_q_t=30)
+        self.labels = dataset.labels
+
         loader = torch.utils.data.DataLoader(dataset, batch_size=4, shuffle=False)
 
         params = torch.load(os.path.join(self.ckpt_dir, f'training_args_fold_{self.fold_n}.bin'))
@@ -83,7 +85,7 @@ class MixModelDataset(torch.utils.data.Dataset):
         
         self.qa_fc = np.vstack(qa_fc)
         self.qa_avg_pool = np.vstack(qa_avg_pool)
-        
+
         h.remove()
         del model
         gc.collect()
@@ -105,7 +107,8 @@ class MixModelDataset(torch.utils.data.Dataset):
         return len(df)
 
     def __getitem__(self, idx):
-        return self.qa_fc[idx], self.qa_avg_pool[idx], self.category[idx], self.labels[idx]
+        labels = self.labels[idx] if self.labels is not None else []
+        return self.qa_fc[idx], self.qa_avg_pool[idx], self.category[idx], labels
 
 def do_evaluate(model, loader):
     pass
@@ -137,6 +140,7 @@ def do_training(model, loaders, optimizer, params):
     it = 1 # global steps
 
     valid_preds = []
+    test_preds = []
     for epoch_i in range(epochs):
         model.train()
 
@@ -180,15 +184,18 @@ def do_training(model, loaders, optimizer, params):
             it+=1
         
         if loaders['valid']:
-            metrics = evaluate(model, loaders['valid'])
+            valid_preds = evaluate(model, loaders['valid'])
                 
-            scheduler.step(metrics['spearmanr'])
-            early_stopping.step(metrics['spearmanr'])
+            #scheduler.step(metrics['spearmanr'])
+            #early_stopping.step(metrics['spearmanr'])
 
-            logs['loss/valid'] = metrics['loss']
-            logs['spearmanr/valid'] = metrics['spearmanr']
+            #logs['loss/valid'] = metrics['loss']
+            #logs['spearmanr/valid'] = metrics['spearmanr']
                 
-            print(f"rho: {metrics['spearmanr']:.4f} (val), loss: {metrics['loss']:.4f} (val)")
+            #print(f"rho: {metrics['spearmanr']:.4f} (val), loss: {metrics['loss']:.4f} (val)")
+
+        if loaders['test']:
+            test_preds = evaluate(model, loaders['test'])
         
     if loaders['valid']:
         early_stopping.restore()
@@ -205,7 +212,7 @@ def main(params):
         tr_ids = pd.read_csv(os.path.join(p['data_dir'],  f"train_ids_fold_{fold_n}.csv"))['ids'].values[:100] # TODO remove for dev
         val_ids = pd.read_csv(os.path.join(p['data_dir'], f"valid_ids_fold_{fold_n}.csv"))['ids'].values[:100]
 
-        train_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], train_df.iloc[tr_ids].copy(), fold_n, device='cpu')
+        train_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], train_df.iloc[tr_ids].copy(), fold_n)
         valid_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], train_df.iloc[val_ids].copy(), fold_n, enc=train_dataset.enc)
         test_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], test_df.copy(), fold_n, enc=train_dataset.enc)
 
