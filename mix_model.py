@@ -17,6 +17,9 @@ from sklearn.preprocessing import OneHotEncoder
 from train_bert_on_all import DatasetQA
 from modeling import BertOnQA
 from constants import targets
+from helpers_torch import set_seed
+from helpers import compute_spearmanr, EarlyStoppingSimple
+from schedulers import LearningRateWithUpDown
 
 import pdb
 
@@ -44,7 +47,6 @@ class MixModelDataset(torch.utils.data.Dataset):
         self._get_data()
 
     def _get_data(self):
-        self.data = {}
         # QA data 
 
         tokenizer = transformers.BertTokenizer.from_pretrained(os.path.join(self.model_dir, 'bert-base-uncased'))
@@ -56,18 +58,26 @@ class MixModelDataset(torch.utils.data.Dataset):
 
         model = BertOnQA(len(targets), os.path.join(self.model_dir, 'bert-base-uncased'), **params)
         model.load_state_dict(torch.load(os.path.join(self.ckpt_dir, f'model_state_dict_fold_{self.fold_n}.pth')))
-        model.eval()
         model.to(self.device)
+
+        qa_avg_pool = []
+        def extract_avg_poolings(self, input, output):
+            qa_avg_pool.append(output.detach().squeeze().cpu().numpy())
+
+        h = model.avg_pool.register_forward_hook(extract_avg_poolings)
         
-        qa_data = []
+        model.eval()
+        qa_fc = []
         for batch in tqdm(loader, total=len(loader)):
             tokens, token_types, _ = batch
             with torch.no_grad():
                 outs = model(tokens.to(self.device), attention_mask=(tokens > 0).to(self.device), token_type_ids=token_types.to(self.device))
-                qa_data.append(outs.detach().cpu().numpy())
+                qa_fc.append(outs.detach().cpu().numpy())
         
-        self.qa_data = np.vstack(qa_data)
+        self.qa_fc = np.vstack(qa_fc)
+        self.qa_avg_pool = np.vstack(qa_avg_pool)
         
+        h.remove()
         del model
         gc.collect()
         torch.cuda.empty_cache()
@@ -77,7 +87,7 @@ class MixModelDataset(torch.utils.data.Dataset):
         find = re.compile(r"^[^.]*")
 
         self.df['netloc'] = self.df['url'].apply(lambda x: re.findall(find, urlparse(x).netloc)[0])
-        
+
         if self.enc is None:
             self.enc = OneHotEncoder(handle_unknown='ignore')
             self.enc.fit(self.df[['category', 'netloc']].values)
@@ -88,12 +98,93 @@ class MixModelDataset(torch.utils.data.Dataset):
         return len(df)
 
     def __getitem__(self, idx):
-        return self.qa_data[idx], self.category[idx]
+        return self.qa_fc[idx], self.qa_avg_pool[idx], self.category[idx], self.labels[idx]
 
-def do_training(model, loaders, epochs):
+def do_evaluate(model, loader):
+    pass
+
+def do_training(model, loaders, optimizer, params):
+    p = params
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+     
+    set_seed(p['seed'])
+
+    lossf = nn.BCEWithLogitsLoss()
+    optimizer.zero_grad()
+    running_loss = None
+
+    scheduler = ReduceLROnPlateau(optimizer, 'max', patience=2, verbose=True, factor=0.1)
+    early_stopping = EarlyStoppingSimple(model, patience=5, min_delta=0)  
+
+    lr_scheduler = LearningRateWithUpDown(
+        optimizer, 
+        p['epochs'] * len(loaders['train']), 
+        warmup=p['warmup'], 
+        warmdown=p['warmdown'], 
+        ini_lr=1e-6, 
+        final_lr=1e-6
+    )
+
+    model.to(device)
+
+    it = 1 # global steps
+
     valid_preds = []
     for epoch_i in range(epochs):
-        pass
+        model.train()
+
+        if early_stopping.training_done:
+            print(f"Early stopping on epoch {epoch_i-1}")
+            break
+
+        pb = tqdm(enumerate(loaders['train']), total=len(loaders['train']), desc=f"Epoch: {epoch_i+1}/{p['epochs']}")
+
+        for batch_i, batch in pb:
+            # step
+            lr_scheduler.step()
+
+            qa_fc, qa_avg_pool, category, labels = batch
+
+            bs = qa_fc.shape[0]
+
+            outs = model(
+                qa_fc.to(device), 
+                qa_avg_pool.to(device), 
+                category.to(device)
+            )
+
+            loss = lossf(outs, labels.to(device))
+
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+
+            # log
+            logs = {'step': it}
+            logs['lr/train'] = optimizer.param_groups[0]['lr']
+            logs['loss/train'] = loss.item() / bs
+            if running_loss:
+                running_loss = 0.98 * running_loss + 0.02 * loss.item() / bs
+            else:
+                running_loss = loss.item() / bs
+
+            pb.set_postfix(loss = running_loss)
+
+            it+=1
+        
+        if loaders['valid']:
+            metrics = evaluate(model, loaders['valid'])
+                
+            scheduler.step(metrics['spearmanr'])
+            early_stopping.step(metrics['spearmanr'])
+
+            logs['loss/valid'] = metrics['loss']
+            logs['spearmanr/valid'] = metrics['spearmanr']
+                
+            print(f"rho: {metrics['spearmanr']:.4f} (val), loss: {metrics['loss']:.4f} (val)")
+        
+    if loaders['valid']:
+        early_stopping.restore()
 
 
 def main(params):
@@ -108,7 +199,7 @@ def main(params):
         tr_ids = pd.read_csv(os.path.join(p['data_dir'],  f"train_ids_fold_{fold_n}.csv"))['ids'].values[:100] # TODO remove for dev
         val_ids = pd.read_csv(os.path.join(p['data_dir'], f"valid_ids_fold_{fold_n}.csv"))['ids'].values[:100]
 
-        train_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], train_df.iloc[tr_ids].copy(), fold_n)
+        train_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], train_df.iloc[tr_ids].copy(), fold_n, device='cpu')
         valid_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], train_df.iloc[val_ids].copy(), fold_n, enc=train_dataset.enc)
         test_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], test_df.copy(), fold_n, enc=train_dataset.enc)
 
@@ -122,7 +213,8 @@ def main(params):
         # model = get_model(next(iter(train_loader)[0].shape[0]))
 
         # do training 
-        test_preds = do_training(model, loaders, p['epochs'])
+        test_preds = do_training(model, loaders, params)
+
         all_test_preds.append(test_preds)
 
     return test_preds
@@ -131,6 +223,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--bs", default=32, type=int)
     parser.add_argument("--epochs", default=10, type=int)
+    parser.add_argument("--warmup", default=0.5, type=float)
+    parser.add_argument("--warmdown", default=0.5, type=float)
     parser.add_argument("--data_dir", default="data", type=str)
     parser.add_argument("--model_dir", default="model", type=str)
     parser.add_argument("--ckpt_dir", default="outputs/bert_on_all", type=str)
