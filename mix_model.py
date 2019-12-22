@@ -13,12 +13,12 @@ import torch
 import torch.nn as nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
-import wandb
+#import wandb
 import transformers
 from sklearn.preprocessing import OneHotEncoder
 from scipy.stats import rankdata
 
-from train_bert_on_all import DatasetQA
+from datasets import DatasetQA
 from modeling import BertOnQA
 from constants import targets
 from helpers_torch import set_seed
@@ -194,8 +194,9 @@ def do_training(model, loaders, optimizer, params, do_wandb=False):
     model.to(device)
 
     if do_wandb:
-        wandb.init(project='google-quest-qa', tags=["mix_model"])
-        wandb.watch(model, log=None)
+        pass
+        #wandb.init(project='google-quest-qa', tags=["mix_model"])
+        #wandb.watch(model, log=None)
 
     it = 1 # global steps
 
@@ -238,7 +239,8 @@ def do_training(model, loaders, optimizer, params, do_wandb=False):
             logs['loss/train'] = loss.item() / bs
             
             if do_wandb:
-                wandb.log(logs, step=it)
+                pass
+                #wandb.log(logs, step=it)
 
             if running_loss:
                 running_loss = 0.98 * running_loss + 0.02 * loss.item() / bs
@@ -263,7 +265,8 @@ def do_training(model, loaders, optimizer, params, do_wandb=False):
             logs['loss/valid'] = loss_val
 
             if do_wandb:
-                wandb.log(logs)
+                pass
+                #wandb.log(logs)
 
             val_rhos.append(rho_val)
 
@@ -365,7 +368,7 @@ if __name__ == '__main__':
     parser.add_argument("--data_dir", default="data", type=str)
     parser.add_argument("--model_dir", default="model", type=str)
     parser.add_argument("--ckpt_dir", default="outputs/bert_on_all", type=str)
-    parser.add_argument("--sub_type", default=2, type=int)
+    parser.add_argument("--sub_type", default=1, type=int)
 
     args = parser.parse_args()
 
