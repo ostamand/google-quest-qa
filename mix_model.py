@@ -118,6 +118,8 @@ class MixModelDataset(torch.utils.data.Dataset):
             self.enc.fit(self.df[['category', 'netloc']].values)
 
         self.category = self.enc.transform(self.df[['category', 'netloc']].values).toarray().astype(np.float32)
+        # in case we have some nans replace nan by 0
+        self.category[np.isnan(self.category)] = 0 
 
         if self.do_cache and self.cache_file is not None:
             with open(path_cache_file, 'wb') as f:
