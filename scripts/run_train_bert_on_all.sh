@@ -2,7 +2,7 @@
         --do_apex  \
         --do_wandb \
         --bs 4 \
-        --fold 0 \
+        --fold 4 \
         --accumulation_step 2 \
         --epochs 5 \
         --lr 2e-5 \

@@ -16,6 +16,7 @@ from tqdm import tqdm
 import wandb
 import transformers
 from sklearn.preprocessing import OneHotEncoder
+from scipy.stats import rankdata
 
 from train_bert_on_all import DatasetQA
 from modeling import BertOnQA
@@ -259,7 +260,6 @@ def do_training(model, loaders, optimizer, params, do_wandb=False):
 
             logs = {}
             logs['spearmanr/valid'] = rho_val
-            #logs['spearmanr_mean/valid'] = rho_val_mean
             logs['loss/valid'] = loss_val
 
             if do_wandb:
@@ -284,6 +284,7 @@ def main(params):
 
     train_df = pd.read_csv(os.path.join(params['data_dir'], 'train.csv'))
     test_df = pd.read_csv(os.path.join(params['data_dir'], 'test.csv'))
+    sub_df = pd.read_csv(os.path.join(params['data_dir'], 'sample_submission.csv'))
 
     test_preds_per_fold = []
     val_rhos = []
@@ -321,6 +322,19 @@ def main(params):
         gc.collect()
         torch.cuda.empty_cache()
 
+    # do submission
+
+    print("Printing submission file...")
+    if params['sub_type'] == 1:
+        test_preds = np.mean(test_preds_per_fold, axis=0)
+    elif params['sub_type'] == 2:
+        test_preds = np.array([np.array([rankdata(c) for c in p.T]).T for p in test_preds_per_fold]).mean(axis=0)
+        max_val = test_preds.max() + 1
+        test_preds = test_preds/max_val + 1e-12
+
+    sub_df.iloc[:, 1:] = test_preds
+    sub_df.to_csv('submission.csv', index=False)
+
     print(val_rhos)
     print(f"rho val: {np.mean(val_rhos):.4f} += {np.std(val_rhos):.4f}")
 
@@ -348,6 +362,7 @@ if __name__ == '__main__':
     parser.add_argument("--data_dir", default="data", type=str)
     parser.add_argument("--model_dir", default="model", type=str)
     parser.add_argument("--ckpt_dir", default="outputs/bert_on_all", type=str)
+    parser.add_argument("--sub_type", default=1, type=int)
 
     args = parser.parse_args()
 
