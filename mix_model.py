@@ -340,17 +340,20 @@ def main(params):
 
     return test_preds
 
-"""
+def get_default_params():
+    return {
+        'bs': 16,
+        'epochs': 100,
+        'lr': 1e-4, 
+        'seed': 42,
+        'warmup': 0.5,
+        'warmdown': 0.5,
+        'data_dir': 'data',
+        'model_dir': 'model',
+        'ckpt_dir': 'outputs/bert_on_all', 
+        'sub_type': 1
+    }
 
-lr 1e-5:                    0.3943 += 0.0033 
-lr 1e-4:                    0.3980 += 0.0046
-change patience:            0.3986 += 0.0043
-0.1 warmup                  0.3986 += 0.0042
-0.5/0.5                     0.3986 += 0.0037
-bs 64                       0.3973 += 0.0039
-bs 16                       0.3991 += 0.0044
-bs 8                        
-"""
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--bs", default=16, type=int)
@@ -362,7 +365,7 @@ if __name__ == '__main__':
     parser.add_argument("--data_dir", default="data", type=str)
     parser.add_argument("--model_dir", default="model", type=str)
     parser.add_argument("--ckpt_dir", default="outputs/bert_on_all", type=str)
-    parser.add_argument("--sub_type", default=1, type=int)
+    parser.add_argument("--sub_type", default=2, type=int)
 
     args = parser.parse_args()
 
