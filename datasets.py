@@ -22,160 +22,176 @@ class DatasetQA(Dataset):
         # [ANSWER]: 1
         # [QUESTION_BODY]: 2
         def process(row, how=0):
-            # token ids:    [CLS] [QUESTION_BODY] question body [ANSWER] answer [SEP] [PAD]
-            # token types:  0    ...                            1 ...
-            # TODO token types = 0 for the [PAD]?
-            if how == 0:
-                tokens = [tokenizer.cls_token_id] + [2] + (512-2)*[tokenizer.pad_token_id] 
-            
-                len_q = np.min([max_len_q_b, len(row['q_b_tokens'])])
-
-                if len(row['a_tokens']) >= 512-4-len_q:
-                    # need to truncate the answer and possibly the question
-                    question_trunc = row['q_b_tokens'][:len_q]
-                    answer_trunc = row['a_tokens'][:512-4-len_q]
-                else: 
-                    # full answer and maximum question length
-                    answer_trunc = row['a_tokens']
-                    question_trunc = row['q_b_tokens'][:512-4-len(answer_trunc)]
-            
-                combined = question_trunc + [1] + answer_trunc + [tokenizer.sep_token_id]
-                tokens[2:2+len(combined)] = combined
-
-                len_q += 2 # to consider special tokens
-                token_types = [0] * len_q + (512-len_q) * [1]
-
-                return tokens, token_types
-
-            # token ids:    [CLS] question body [SEP] answer [SEP] [PAD]
-            # token types:  0    ...             0    1 ...        0 
-            if how == 1:
-                tokens = [tokenizer.cls_token_id] + (512-1)*[tokenizer.pad_token_id] 
-
-                len_q = np.min([max_len_q_b, len(row['q_b_tokens'])])
-
-                if len(row['a_tokens']) >= 512-3-len_q:
-                    # need to truncate the answer and possibly the question
-                    question_trunc = row['q_b_tokens'][:len_q]
-                    answer_trunc = row['a_tokens'][:512-3-len_q]
-                else: 
-                    # full answer and maximum question length
-                    answer_trunc = row['a_tokens']
-                    question_trunc = row['q_b_tokens'][:512-3-len(answer_trunc)]
+            try:
+                # token ids:    [CLS] [QUESTION_BODY] question body [ANSWER] answer [SEP] [PAD]
+                # token types:  0    ...                            1 ...
+                # TODO token types = 0 for the [PAD]?
+                if how == 0:
+                    tokens = [tokenizer.cls_token_id] + [2] + (512-2)*[tokenizer.pad_token_id] 
                 
-                combined = question_trunc + [tokenizer.sep_token_id] + answer_trunc + [tokenizer.sep_token_id]
-                tokens[1:1+len(combined)] = combined
+                    len_q = np.min([max_len_q_b, len(row['q_b_tokens'])])
 
-                token_types = [0] * (len(question_trunc)+2) + (len(answer_trunc)+1) * [1] + (512 - len(answer_trunc) - len(question_trunc) - 3) * [0]
-
-                return tokens, token_types
-
-            # token ids:    [CLS] question title [SEP] question body [SEP] answer [SEP] [PAD]
-            # token types:  0     0 ...          0     1 ...         1     1 ...  1     0 ...
-            if how==2:
-                tokens = [tokenizer.cls_token_id] + (512-1)*[tokenizer.pad_token_id] 
-
-                len_q_b = np.min([max_len_q_b, len(row['q_b_tokens'])])
-                len_q_t = np.min([max_len_q_t, len(row['q_t_tokens'])])
-
-                len_q = len_q_b + len_q_t
-
-                if len(row['a_tokens']) >= 512-4-len_q:
-                    # need to truncate the answer and possibly the questions
-                    question_title_trunc = row['q_t_tokens'][:len_q_t]
-                    question_body_trunc =  row['q_b_tokens'][:len_q_b]
-                    answer_trunc = row['a_tokens'][:512-4-len_q_t-len_q_b]
-                else:
-                    # full answer and maximum question length
-                    answer_trunc = row['a_tokens']
-                    
-                    # try with full title and truncated question body
-                    if len(answer_trunc) + len(row['q_b_tokens']) + len_q_t >= 512-4:
-                        
-                        question_title_trunc = row['q_t_tokens']
-                        question_body_trunc =  row['q_b_tokens'][:512-4-len(answer_trunc)-len(question_title_trunc)]
-
-                        if len(question_title_trunc) + len(question_body_trunc) + len(answer_trunc) > 512-4:
-                            # need to truncate title also for now will truncate both
-                            # TODO does not happen in the train dataset
-                            question_title_trunc = row['q_t_tokens'][:len_q_t]
-                            question_body_trunc =  row['q_b_tokens'][:len_q_b]
-
-                    # full question body, question title and answer
-                    else:
-                        question_body_trunc = row['q_b_tokens']
-                        question_title_trunc = row['q_t_tokens']
-
-                combined = question_title_trunc + [tokenizer.sep_token_id] + question_body_trunc + [tokenizer.sep_token_id] + answer_trunc + [tokenizer.sep_token_id]
-                tokens[1:1+len(combined)] = combined
-
-                # TODO change token_types. 0 for question, 1 for answer
-                #token_types = [0] * (len(question_title_trunc)+2) + (len(question_body_trunc)+len(answer_trunc)+2) * [1] + (512 - len(answer_trunc) - len(question_body_trunc) - len(question_title_trunc)  - 4) * [0]
-                token_types = [0] * (len(question_title_trunc)+len(question_body_trunc)+3) + (len(answer_trunc)+1) * [1] + (512 - len(answer_trunc) - len(question_body_trunc) - len(question_title_trunc)  - 4) * [0]
-
-                return tokens, token_types
-
-            if how == 3:
-                max_sequence_length=512
-                t_max_len=30
-                q_max_len=239
-                a_max_len=239
-
-                t = tokenizer.tokenize(row['question_title'])
-                q = tokenizer.tokenize(row['question_body'])
-                a = tokenizer.tokenize(row['answer'])
-    
-                t_len = len(t)
-                q_len = len(q)
-                a_len = len(a)
-
-                if (t_len+q_len+a_len+4) > max_sequence_length:
-                    
-                    if t_max_len > t_len:
-                        t_new_len = t_len
-                        a_max_len = a_max_len + math.floor((t_max_len - t_len)/2)
-                        q_max_len = q_max_len + math.ceil((t_max_len - t_len)/2)
-                    else:
-                        t_new_len = t_max_len
+                    if len(row['a_tokens']) >= 512-4-len_q:
+                        # need to truncate the answer and possibly the question
+                        question_trunc = row['q_b_tokens'][:len_q]
+                        answer_trunc = row['a_tokens'][:512-4-len_q]
+                    else: 
+                        # full answer and maximum question length
+                        answer_trunc = row['a_tokens']
+                        question_trunc = row['q_b_tokens'][:512-4-len(answer_trunc)]
                 
-                    if a_max_len > a_len:
-                        a_new_len = a_len 
-                        q_new_len = q_max_len + (a_max_len - a_len)
-                    elif q_max_len > q_len:
-                        a_new_len = a_max_len + (q_max_len - q_len)
-                        q_new_len = q_len
-                    else:
-                        a_new_len = a_max_len
-                        q_new_len = q_max_len
-                        
-                    if t_new_len+a_new_len+q_new_len+4 != max_sequence_length:
-                        raise ValueError("New sequence length should be %d, but is %d" 
-                                        % (max_sequence_length, (t_new_len+a_new_len+q_new_len+4)))
+                    combined = question_trunc + [1] + answer_trunc + [tokenizer.sep_token_id]
+                    tokens[2:2+len(combined)] = combined
+
+                    len_q += 2 # to consider special tokens
+                    token_types = [0] * len_q + (512-len_q) * [1]
+
+                    return tokens, token_types
+
+                # token ids:    [CLS] question body [SEP] answer [SEP] [PAD]
+                # token types:  0    ...             0    1 ...        0 
+                if how == 1:
+                    tokens = [tokenizer.cls_token_id] + (512-1)*[tokenizer.pad_token_id] 
+
+                    len_q = np.min([max_len_q_b, len(row['q_b_tokens'])])
+
+                    if len(row['a_tokens']) >= 512-3-len_q:
+                        # need to truncate the answer and possibly the question
+                        question_trunc = row['q_b_tokens'][:len_q]
+                        answer_trunc = row['a_tokens'][:512-3-len_q]
+                    else: 
+                        # full answer and maximum question length
+                        answer_trunc = row['a_tokens']
+                        question_trunc = row['q_b_tokens'][:512-3-len(answer_trunc)]
                     
-                    t = t[:t_new_len]
-                    q = q[:q_new_len]
-                    a = a[:a_new_len]
+                    combined = question_trunc + [tokenizer.sep_token_id] + answer_trunc + [tokenizer.sep_token_id]
+                    tokens[1:1+len(combined)] = combined
 
-                stoken = ["[CLS]"] + t + ["[SEP]"] + q + ["[SEP]"] + a + ["[SEP]"]
-                tokens = tokenizer.convert_tokens_to_ids(stoken)
-                tokens = tokens + [0] * (max_sequence_length-len(tokens))
+                    token_types = [0] * (len(question_trunc)+2) + (len(answer_trunc)+1) * [1] + (512 - len(answer_trunc) - len(question_trunc) - 3) * [0]
 
-                # token types
+                    return tokens, token_types
 
-                if len(tokens)>max_sequence_length:
-                    raise IndexError("Token length more than max seq length!")
+                # token ids:    [CLS] question title [SEP] question body [SEP] answer [SEP] [PAD]
+                # token types:  0     0 ...          0     1 ...         1     1 ...  1     0 ...
+                if how==2:
+                    tokens = [tokenizer.cls_token_id] + (512-1)*[tokenizer.pad_token_id] 
 
-                segments = []
-                first_sep = True
-                current_segment_id = 0
-                for token in stoken:
-                    segments.append(current_segment_id)
-                    if token == "[SEP]":
-                        if first_sep:
-                            first_sep = False 
+                    len_q_b = np.min([max_len_q_b, len(row['q_b_tokens'])])
+                    len_q_t = np.min([max_len_q_t, len(row['q_t_tokens'])])
+
+                    len_q = len_q_b + len_q_t
+
+                    if len(row['a_tokens']) >= 512-4-len_q:
+                        # need to truncate the answer and possibly the questions
+                        question_title_trunc = row['q_t_tokens'][:len_q_t]
+                        question_body_trunc =  row['q_b_tokens'][:len_q_b]
+                        answer_trunc = row['a_tokens'][:512-4-len_q_t-len_q_b]
+                    else:
+                        # full answer and maximum question length
+                        answer_trunc = row['a_tokens']
+                        
+                        # try with full title and truncated question body
+                        if len(answer_trunc) + len(row['q_b_tokens']) + len_q_t >= 512-4:
+                            
+                            question_title_trunc = row['q_t_tokens']
+                            question_body_trunc =  row['q_b_tokens'][:512-4-len(answer_trunc)-len(question_title_trunc)]
+
+                            if len(question_title_trunc) + len(question_body_trunc) + len(answer_trunc) > 512-4:
+                                # need to truncate title also for now will truncate both
+                                # TODO does not happen in the train dataset
+                                question_title_trunc = row['q_t_tokens'][:len_q_t]
+                                question_body_trunc =  row['q_b_tokens'][:len_q_b]
+
+                        # full question body, question title and answer
                         else:
-                            current_segment_id = 1
-                token_types = segments + [0] * (max_sequence_length - len(stoken))
+                            question_body_trunc = row['q_b_tokens']
+                            question_title_trunc = row['q_t_tokens']
+
+                    combined = question_title_trunc + [tokenizer.sep_token_id] + question_body_trunc + [tokenizer.sep_token_id] + answer_trunc + [tokenizer.sep_token_id]
+                    
+                    # Add check on maxlen in case....
+                    # truncate on answer.
+                    len_combined = len(combined) + 1 # +1 for CLS 
+                    if len_combined > 512:
+                        tokens = [tokenizer.cls_token_id] + combined[:512-1]
+                        token_types = [0] * (len(question_title_trunc) + len(question_body_trunc) + 3) + (512 - len(question_title_trunc) - len(question_body_trunc) - 3) * [1]
+                    else:
+                        tokens[1:1+len(combined)] = combined
+                        token_types = [0] * (len(question_title_trunc)+len(question_body_trunc)+3) + (len(answer_trunc)+1) * [1] + (512 - len(answer_trunc) - len(question_body_trunc) - len(question_title_trunc)  - 4) * [0]
+
+                    # TODO change token_types. 0 for question, 1 for answer
+                    #token_types = [0] * (len(question_title_trunc)+2) + (len(question_body_trunc)+len(answer_trunc)+2) * [1] + (512 - len(answer_trunc) - len(question_body_trunc) - len(question_title_trunc)  - 4) * [0]
+                    
+                    return tokens, token_types
+
+                if how == 3:
+                    max_sequence_length=512
+                    t_max_len=30
+                    q_max_len=239
+                    a_max_len=239
+
+                    t = tokenizer.tokenize(row['question_title'])
+                    q = tokenizer.tokenize(row['question_body'])
+                    a = tokenizer.tokenize(row['answer'])
+        
+                    t_len = len(t)
+                    q_len = len(q)
+                    a_len = len(a)
+
+                    if (t_len+q_len+a_len+4) > max_sequence_length:
+                        
+                        if t_max_len > t_len:
+                            t_new_len = t_len
+                            a_max_len = a_max_len + math.floor((t_max_len - t_len)/2)
+                            q_max_len = q_max_len + math.ceil((t_max_len - t_len)/2)
+                        else:
+                            t_new_len = t_max_len
+                    
+                        if a_max_len > a_len:
+                            a_new_len = a_len 
+                            q_new_len = q_max_len + (a_max_len - a_len)
+                        elif q_max_len > q_len:
+                            a_new_len = a_max_len + (q_max_len - q_len)
+                            q_new_len = q_len
+                        else:
+                            a_new_len = a_max_len
+                            q_new_len = q_max_len
+                            
+                        if t_new_len+a_new_len+q_new_len+4 != max_sequence_length:
+                            raise ValueError("New sequence length should be %d, but is %d" 
+                                            % (max_sequence_length, (t_new_len+a_new_len+q_new_len+4)))
+                        
+                        t = t[:t_new_len]
+                        q = q[:q_new_len]
+                        a = a[:a_new_len]
+
+                    stoken = ["[CLS]"] + t + ["[SEP]"] + q + ["[SEP]"] + a + ["[SEP]"]
+                    tokens = tokenizer.convert_tokens_to_ids(stoken)
+                    tokens = tokens + [0] * (max_sequence_length-len(tokens))
+
+                    # token types
+
+                    if len(tokens)>max_sequence_length:
+                        raise IndexError("Token length more than max seq length!")
+
+                    segments = []
+                    first_sep = True
+                    current_segment_id = 0
+                    for token in stoken:
+                        segments.append(current_segment_id)
+                        if token == "[SEP]":
+                            if first_sep:
+                                first_sep = False 
+                            else:
+                                current_segment_id = 1
+                    token_types = segments + [0] * (max_sequence_length - len(stoken))
+
+                    return tokens, token_types
+            
+            except:
+                # something went wrong...
+                tokens = [tokenizer.cls_token_id] + (512-2)*[tokenizer.pad_token_id] + [tokenizer.sep_token_id]
+                token_types = [0] * 512
 
                 return tokens, token_types
 
