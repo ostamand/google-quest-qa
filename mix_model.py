@@ -277,6 +277,10 @@ def do_training(model, loaders, optimizer, params, do_wandb=False):
 def main(params):
     p = params 
 
+    # check output dir
+    if not os.path.exists(p['out_dir']):
+        os.mkdir(p['out_dir'])
+
     train_df = pd.read_csv(os.path.join(params['data_dir'], 'train.csv'))
     test_df = pd.read_csv(os.path.join(params['data_dir'], 'test.csv'))
     sub_df = pd.read_csv(os.path.join(params['data_dir'], 'sample_submission.csv'))
@@ -310,6 +314,12 @@ def main(params):
 
         val_rhos.append(val_rho)
         test_preds_per_fold.append(test_preds)
+
+        # save model 
+        torch.save(model.state_dict(), os.path.join(p['out_dir'], f"model_state_dict_fold_{fold_n}.pth"))
+        
+        with open(os.path.join(p['out_dir'], f"enc_fold_{fold_n}.pickle"), 'wb') as f:
+            pickle.dump(train_dataset.enc, f)
 
         # cleanup
 
@@ -348,7 +358,8 @@ def get_default_params():
         'model_dir': 'model',
         'ckpt_dir': 'outputs/bert_on_all', 
         'sub_type': 1, 
-        'do_cache': False
+        'do_cache': False, 
+        'out_dir': 'outputs/mix_model'
     }
 
 if __name__ == '__main__':
@@ -360,6 +371,7 @@ if __name__ == '__main__':
     parser.add_argument("--warmup", default=0.5, type=float)
     parser.add_argument("--warmdown", default=0.5, type=float)
     parser.add_argument("--data_dir", default="data", type=str)
+    parser.add_argument("--out_dir", default="outputs/mix_model", type=str)
     parser.add_argument("--fold_dir", default="data", type=str)
     parser.add_argument("--model_dir", default="model", type=str)
     parser.add_argument("--ckpt_dir", default="outputs/bert_on_all", type=str)
