@@ -293,8 +293,8 @@ def main(params):
     val_rhos = []
 
     for fold_n in range(5):
-        tr_ids = pd.read_csv(os.path.join(p['data_dir'],  f"train_ids_fold_{fold_n}.csv"))['ids'] # TODO remove for dev
-        val_ids = pd.read_csv(os.path.join(p['data_dir'], f"valid_ids_fold_{fold_n}.csv"))['ids']
+        tr_ids = pd.read_csv(os.path.join(p['fold_dir'],  f"train_ids_fold_{fold_n}.csv"))['ids'] # TODO remove for dev
+        val_ids = pd.read_csv(os.path.join(p['fold_dir'], f"valid_ids_fold_{fold_n}.csv"))['ids']
 
         #TODO add cache file
         train_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], train_df.iloc[tr_ids].copy(), fold_n, cache_file=f"mix_train_fold_{fold_n}.pickle")
@@ -352,6 +352,7 @@ def get_default_params():
         'warmup': 0.5,
         'warmdown': 0.5,
         'data_dir': 'data',
+        'fold_dir': 'data',
         'model_dir': 'model',
         'ckpt_dir': 'outputs/bert_on_all', 
         'sub_type': 1
@@ -366,6 +367,7 @@ if __name__ == '__main__':
     parser.add_argument("--warmup", default=0.5, type=float)
     parser.add_argument("--warmdown", default=0.5, type=float)
     parser.add_argument("--data_dir", default="data", type=str)
+    parser.add_argument("--fold_dir", default="data", type=str)
     parser.add_argument("--model_dir", default="model", type=str)
     parser.add_argument("--ckpt_dir", default="outputs/bert_on_all", type=str)
     parser.add_argument("--sub_type", default=1, type=int)
