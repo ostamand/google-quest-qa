@@ -51,11 +51,12 @@ class MixModel(nn.Module):
 
 class MixModelDataset(torch.utils.data.Dataset):
 
-    def __init__(self, model_dir, ckpt_dir, df, fold_n, enc=None, cache_file=None, device='cuda'):
+    def __init__(self, model_dir, ckpt_dir, df, fold_n, enc=None, cache_file=None, do_cache=False, device='cuda'):
         super(MixModelDataset, self).__init__()
         self.df, self.fold_n = df, fold_n
         self.enc = enc
         self.model_dir, self.ckpt_dir, self.cache_file = model_dir, ckpt_dir, cache_file
+        self.do_cache = do_cache
 
         self.device = torch.device(device)
 
@@ -65,7 +66,7 @@ class MixModelDataset(torch.utils.data.Dataset):
         # QA data 
         path_cache_file = os.path.join('.tmp', self.cache_file)
 
-        if self.cache_file is not None:
+        if self.do_cache and self.cache_file is not None:
             if os.path.exists(path_cache_file):
                 with open(path_cache_file, 'rb') as f:
                     self.labels, self.qa_fc, self.qa_avg_pool, self.qa_max_pool, self.category = pickle.load(f)
@@ -125,7 +126,7 @@ class MixModelDataset(torch.utils.data.Dataset):
 
         self.category = self.enc.transform(self.df[['category', 'netloc']].values).toarray().astype(np.float32)
 
-        if self.cache_file is not None:
+        if self.do_cache and self.cache_file is not None:
             with open(path_cache_file, 'wb') as f:
                 pickle.dump((self.labels, self.qa_fc, self.qa_avg_pool, self.qa_max_pool, self.category), f)
 
@@ -297,9 +298,9 @@ def main(params):
         val_ids = pd.read_csv(os.path.join(p['fold_dir'], f"valid_ids_fold_{fold_n}.csv"))['ids']
 
         #TODO add cache file
-        train_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], train_df.iloc[tr_ids].copy(), fold_n, cache_file=f"mix_train_fold_{fold_n}.pickle")
-        valid_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], train_df.iloc[val_ids].copy(), fold_n, enc=train_dataset.enc, cache_file=f"mix_valid_fold_{fold_n}.pickle")
-        test_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], test_df.copy(), fold_n, enc=train_dataset.enc, cache_file=f"mix_test_fold_{fold_n}.pickle")
+        train_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], train_df.iloc[tr_ids].copy(), fold_n, cache_file=f"mix_train_fold_{fold_n}.pickle", do_cache=p['do_cache'])
+        valid_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], train_df.iloc[val_ids].copy(), fold_n, enc=train_dataset.enc, cache_file=f"mix_valid_fold_{fold_n}.pickle", do_cache=p['do_cache'])
+        test_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], test_df.copy(), fold_n, enc=train_dataset.enc, cache_file=f"mix_test_fold_{fold_n}.pickle", do_cache=p['do_cache'])
 
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=p['bs'], shuffle=True)
         valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=p['bs'], shuffle=False)
@@ -355,7 +356,8 @@ def get_default_params():
         'fold_dir': 'data',
         'model_dir': 'model',
         'ckpt_dir': 'outputs/bert_on_all', 
-        'sub_type': 1
+        'sub_type': 1, 
+        'do_cache': False
     }
 
 if __name__ == '__main__':
@@ -371,6 +373,7 @@ if __name__ == '__main__':
     parser.add_argument("--model_dir", default="model", type=str)
     parser.add_argument("--ckpt_dir", default="outputs/bert_on_all", type=str)
     parser.add_argument("--sub_type", default=1, type=int)
+    parser.add_argument("--do_cache", action='store_true')
 
     args = parser.parse_args()
 
