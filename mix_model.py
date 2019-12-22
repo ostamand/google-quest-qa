@@ -64,7 +64,7 @@ class MixModelDataset(torch.utils.data.Dataset):
 
     def _get_data(self):
         # QA data 
-        path_cache_file = os.path.join('.tmp', self.cache_file)
+        path_cache_file = os.path.join('.tmp', self.cache_file) if self.cache_file is not None else None
 
         if self.do_cache and self.cache_file is not None:
             if os.path.exists(path_cache_file):
