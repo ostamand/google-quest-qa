@@ -37,14 +37,14 @@ outputs/bert_on_all
 
 class MixModel(nn.Module):
 
-    def __init__(self, qa_fc_size, qa_avg_pool_size, qa_max_pool_size, category_size):
+    def __init__(self, qa_fc_size, qa_avg_pool_size, category_size):
         super(MixModel, self).__init__()
         n_features = qa_fc_size + qa_avg_pool_size + category_size
         self.fc_dp = nn.Dropout(0.3)
         self.fc = nn.Linear(n_features, len(targets))
 
-    def forward(self, qa_fc, qa_avg_pool, qa_max_pool, category):
-        #x = torch.cat([qa_fc, qa_avg_pool, qa_max_pool, category], dim=1)
+    def forward(self, qa_fc, qa_avg_pool, category):
+        #x = torch.cat([qa_fc, qa_avg_pool, category], dim=1)
         x = torch.cat([qa_fc, qa_avg_pool, category], dim=1)
         out = self.fc(self.fc_dp(x))
         return out 
@@ -69,7 +69,7 @@ class MixModelDataset(torch.utils.data.Dataset):
         if self.do_cache and self.cache_file is not None:
             if os.path.exists(path_cache_file):
                 with open(path_cache_file, 'rb') as f:
-                    self.labels, self.qa_fc, self.qa_avg_pool, self.qa_max_pool, self.category = pickle.load(f)
+                    self.labels, self.qa_fc, self.qa_avg_pool, self.category = pickle.load(f)
                 return
 
         tokenizer = transformers.BertTokenizer.from_pretrained(os.path.join(self.model_dir, 'bert-base-uncased'))
@@ -89,12 +89,7 @@ class MixModelDataset(torch.utils.data.Dataset):
         def extract_avg_poolings(self, input, output):
             qa_avg_pool.append(output.detach().squeeze().cpu().numpy())
 
-        qa_max_pool = []
-        def extract_max_poolings(self, input, output):
-            qa_max_pool.append(output.detach().squeeze().cpu().numpy())
-
         h = model.avg_pool.register_forward_hook(extract_avg_poolings)
-        h2 = model.max_pool.register_forward_hook(extract_max_poolings)
         
         model.eval()
         qa_fc = []
@@ -106,10 +101,8 @@ class MixModelDataset(torch.utils.data.Dataset):
         
         self.qa_fc = np.vstack(qa_fc).astype(np.float32)
         self.qa_avg_pool = np.vstack(qa_avg_pool).astype(np.float32)
-        self.qa_max_pool = np.vstack(qa_max_pool).astype(np.float32)
 
         h.remove()
-        h2.remove()
         del model
         gc.collect()
         torch.cuda.empty_cache()
@@ -128,14 +121,14 @@ class MixModelDataset(torch.utils.data.Dataset):
 
         if self.do_cache and self.cache_file is not None:
             with open(path_cache_file, 'wb') as f:
-                pickle.dump((self.labels, self.qa_fc, self.qa_avg_pool, self.qa_max_pool, self.category), f)
+                pickle.dump((self.labels, self.qa_fc, self.qa_avg_pool, self.category), f)
 
     def __len__(self):
         return len(self.df)
 
     def __getitem__(self, idx):
         labels = self.labels[idx] if self.labels is not None else []
-        return self.qa_fc[idx], self.qa_avg_pool[idx], self.qa_max_pool[idx], self.category[idx], labels
+        return self.qa_fc[idx], self.qa_avg_pool[idx], self.category[idx], labels
 
 def do_evaluate(model, loader, with_labels=False):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -148,11 +141,10 @@ def do_evaluate(model, loader, with_labels=False):
     loss = 0
     with torch.no_grad():
         for batch_i, batch in enumerate(loader):
-            qa_fc, qa_avg_pool, qa_max_pool, category, labels = batch
+            qa_fc, qa_avg_pool, category, labels = batch
             out = model(
                 qa_fc.to(device), 
-                qa_avg_pool.to(device), 
-                qa_max_pool.to(device),
+                qa_avg_pool.to(device),
                 category.to(device)
             )
             all_preds.append(torch.sigmoid(out).detach().cpu().numpy())
@@ -217,14 +209,13 @@ def do_training(model, loaders, optimizer, params, do_wandb=False):
             # step
             lr_scheduler.step()
 
-            qa_fc, qa_avg_pool, qa_max_pool, category, labels = batch
+            qa_fc, qa_avg_pool, category, labels = batch
 
             bs = qa_fc.shape[0]
 
             outs = model(
                 qa_fc.to(device), 
-                qa_avg_pool.to(device), 
-                qa_max_pool.to(device),
+                qa_avg_pool.to(device),
                 category.to(device)
             )
 
@@ -307,9 +298,9 @@ def main(params):
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=p['bs'], shuffle=False)            
         loaders = {'train': train_loader, 'valid': valid_loader, 'test': test_loader}
 
-        qa_fc, qa_avg_pool, qa_max_pool, cat, _ = next(iter(train_loader))
+        qa_fc, qa_avg_pool, cat, _ = next(iter(train_loader))
 
-        model = MixModel(qa_fc.shape[1], qa_avg_pool.shape[1], qa_max_pool.shape[1], cat.shape[1])
+        model = MixModel(qa_fc.shape[1], qa_avg_pool.shape[1], cat.shape[1])
 
         optimizer = torch.optim.Adam(model.parameters(), p['lr'])
 
