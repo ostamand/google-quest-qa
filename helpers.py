@@ -41,9 +41,12 @@ class EarlyStoppingSimple():
                 self.count += 1
             
     def restore(self):
-        print(f"Best epoch: {self.best_step:.6f}. Best score: {self.best_score:.6f}")
-        print("Restoring...")
-        self.model.load_state_dict(torch.load('.tmp/best.pth'))
+        try:
+            print(f"Best epoch: {self.best_step:.6f}. Best score: {self.best_score:.6f}")
+            print("Restoring...")
+            self.model.load_state_dict(torch.load('.tmp/best.pth'))
+        except:
+            print("Error while restoring checkpoint")
 
     @property 
     def training_done(self):
