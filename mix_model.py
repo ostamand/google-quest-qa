@@ -333,7 +333,7 @@ def main(params):
     print(val_rhos)
     print(f"rho val: {np.mean(val_rhos):.4f} += {np.std(val_rhos):.4f}")
 
-    return test_preds
+    return test_preds, val_rhos
 
 def get_default_params():
     return {
