@@ -238,7 +238,9 @@ def main(**args):
     #optimizer = transformers.create_optimizer(args['lr'], num_train_steps, args['warmup_steps'])
     optimizer = tf.keras.optimizers.Adam(learning_rate=args['lr'])
 
-    model.compile(loss='binary_crossentropy', optimizer=optimizer)
+    lossf = tf.keras.losses.BinaryCrossentropy(label_smoothing=args['label_smoothing'])
+
+    model.compile(loss=lossf, optimizer=optimizer)
 
     cycle = LROneCycle(num_train_steps, up=args['warmup'], down=args['warmdown'], do_wandb=True, min_lr=1e-6)
 
@@ -267,9 +269,6 @@ def main(**args):
     )
 
     # save to output dir
-
-    if not os.path.exists(args['out_dir']):
-        os.mkdir(args['out_dir'])
     model.save_weights(os.path.join(args['out_dir'], f"best_weights_fold_{args['fold']}.h5"))
     with open(os.path.join(args['out_dir'], f"training_args_{args['fold']}.pickle"), 'wb') as f:
         pickle.dump(args, f)
@@ -289,6 +288,7 @@ if __name__ == '__main__':
     parser.add_argument("--warmup", default=0.1, type=float)
     parser.add_argument("--warmdown", default=0.1, type=float)
     parser.add_argument("--lr", default=3e-5, type=float)
+    parser.add_argument("--label_smoothing", default=0., type=float)
 
     args = parser.parse_args()
 
