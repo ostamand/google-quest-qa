@@ -240,7 +240,7 @@ def main(**args):
 
     model.compile(loss='binary_crossentropy', optimizer=optimizer)
 
-    cycle = LROneCycle(num_train_steps, up=args['warmup'], down=args['warmdown'], do_wandb=True)
+    cycle = LROneCycle(num_train_steps, up=args['warmup'], down=args['warmdown'], do_wandb=True, min_lr=1e-6)
 
     cb = SpearmanrCallback((valid_inputs, valid_outputs), restore=True, do_wandb=True)
 
