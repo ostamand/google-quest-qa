@@ -26,15 +26,15 @@ import pdb
 
 np.set_printoptions(suppress=True)
 
-def _get_masks(tokens, max_seq_length):
+def _get_masks(tokens):
     """Mask for padding"""
-    if len(tokens)>max_seq_length:
+    if len(tokens)>512:
         raise IndexError("Token length more than max seq length!")
-    return [1]*len(tokens) + [0] * (max_seq_length - len(tokens))
+    return [1]*len(tokens) + [0] * (512 - len(tokens))
 
-def _get_segments(tokens, max_seq_length):
+def _get_segments(tokens):
     """Segments: 0 for the first sequence, 1 for the second"""
-    if len(tokens)>max_seq_length:
+    if len(tokens)>512:
         raise IndexError("Token length more than max seq length!")
     segments = []
     first_sep = True
@@ -46,15 +46,15 @@ def _get_segments(tokens, max_seq_length):
                 first_sep = False 
             else:
                 current_segment_id = 1
-    return segments + [0] * (max_seq_length - len(tokens))
+    return segments + [0] * (512 - len(tokens))
 
-def _get_ids(tokens, tokenizer, max_seq_length):
+def _get_ids(tokens, tokenizer):
     """Token ids from Tokenizer vocab"""
     token_ids = tokenizer.convert_tokens_to_ids(tokens)
-    input_ids = token_ids + [0] * (max_seq_length-len(token_ids))
+    input_ids = token_ids + [0] * (512-len(token_ids))
     return input_ids
 
-def _trim_input(tokenizer, title, question, answer, max_sequence_length, 
+def _trim_input(tokenizer, title, question, answer, 
                 t_max_len=30, q_max_len=239, a_max_len=239):
 
     t = tokenizer.tokenize(title)
@@ -65,7 +65,7 @@ def _trim_input(tokenizer, title, question, answer, max_sequence_length,
     q_len = len(q)
     a_len = len(a)
 
-    if (t_len+q_len+a_len+4) > max_sequence_length:
+    if (t_len+q_len+a_len+4) > 512:
         
         if t_max_len > t_len:
             t_new_len = t_len
@@ -85,9 +85,9 @@ def _trim_input(tokenizer, title, question, answer, max_sequence_length,
             q_new_len = q_max_len
             
             
-        if t_new_len+a_new_len+q_new_len+4 != max_sequence_length:
+        if t_new_len+a_new_len+q_new_len+4 != 512:
             raise ValueError("New sequence length should be %d, but is %d" 
-                             % (max_sequence_length, (t_new_len+a_new_len+q_new_len+4)))
+                             % (512, (t_new_len+a_new_len+q_new_len+4)))
         
         t = t[:t_new_len]
         q = q[:q_new_len]
@@ -95,25 +95,25 @@ def _trim_input(tokenizer, title, question, answer, max_sequence_length,
     
     return t, q, a
 
-def _convert_to_bert_inputs(title, question, answer, tokenizer, max_sequence_length):
+def _convert_to_bert_inputs(title, question, answer, tokenizer):
     """Converts tokenized input to ids, masks and segments for BERT"""
     
     stoken = ["[CLS]"] + title + ["[SEP]"] + question + ["[SEP]"] + answer + ["[SEP]"]
 
-    input_ids = _get_ids(stoken, tokenizer, max_sequence_length)
-    input_masks = _get_masks(stoken, max_sequence_length)
-    input_segments = _get_segments(stoken, max_sequence_length)
+    input_ids = _get_ids(stoken, tokenizer)
+    input_masks = _get_masks(stoken)
+    input_segments = _get_segments(stoken)
 
     return [input_ids, input_masks, input_segments]
 
-def compute_input_arays(df, columns, tokenizer, max_sequence_length):
+def compute_input_arays(df, columns, tokenizer):
     input_ids, input_masks, input_segments = [], [], []
     for _, instance in tqdm(df[columns].iterrows()):
         t, q, a = instance.question_title, instance.question_body, instance.answer
 
-        t, q, a = _trim_input(tokenizer, t, q, a, max_sequence_length)
+        t, q, a = _trim_input(tokenizer, t, q, a)
 
-        ids, masks, segments = _convert_to_bert_inputs(t, q, a, tokenizer, max_sequence_length)
+        ids, masks, segments = _convert_to_bert_inputs(t, q, a, tokenizer)
         input_ids.append(ids)
         input_masks.append(masks)
         input_segments.append(segments)
@@ -172,13 +172,13 @@ class CustomCallback(tf.keras.callbacks.Callback):
                 self.model.predict(self.test_inputs, batch_size=self.batch_size)
             )
 
-def bert_model(model_path, maxlen, dp=0.2):
+def bert_model(model_path, dp=0.2):
     input_word_ids = tf.keras.layers.Input(
-        (maxlen,), dtype=tf.int32, name='input_word_ids')
+        (512,), dtype=tf.int32, name='input_word_ids')
     input_masks = tf.keras.layers.Input(
-        (maxlen,), dtype=tf.int32, name='input_masks')
+        (512,), dtype=tf.int32, name='input_masks')
     input_segments = tf.keras.layers.Input(
-        (maxlen,), dtype=tf.int32, name='input_segments')
+        (512,), dtype=tf.int32, name='input_segments')
     
     bert_layer = hub.KerasLayer(model_path, trainable=True)
     
@@ -211,8 +211,8 @@ def main(**args):
     input_categories = list(df_train.columns[[1,2,5]])
 
     outputs = compute_output_arrays(df_train, output_categories)
-    inputs = compute_input_arays(df_train, input_categories, tokenizer, args['maxlen'])
-    test_inputs = compute_input_arays(df_test, input_categories, tokenizer, args['maxlen'])
+    inputs = compute_input_arays(df_train, input_categories, tokenizer)
+    test_inputs = compute_input_arays(df_test, input_categories, tokenizer)
 
     if args['fold'] is not None:
         tr_ids =  pd.read_csv(os.path.join(args['data_dir'],  f"train_ids_fold_{args['fold']}.csv"))['ids'].values
@@ -221,7 +221,7 @@ def main(**args):
     K.clear_session()
     go_deterministic(args['seed'])
 
-    model = bert_model(args['model_dir'], args['maxlen'], args['dp'])
+    model = bert_model(args['model_dir'], args['dp'])
 
     tags = [] if args['fold'] is None else [str(args['fold'])]
     tags.append('from_kaggle')
@@ -282,7 +282,6 @@ if __name__ == '__main__':
     parser.add_argument("--out_dir", default="outputs/baseline_on_all", type=str)
     parser.add_argument("--model_dir", default="model/bert_en_uncased_L-12_H-768_A-12", type=str)
     parser.add_argument("--fold", default=None, type=int)
-    parser.add_argument("--maxlen", default=512, type=int)
     parser.add_argument("--bs", default=8, type=int)
     parser.add_argument("--dp", default=0.2, type=float)
     parser.add_argument("--warmup", default=0.1, type=float)
