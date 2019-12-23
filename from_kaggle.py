@@ -18,6 +18,7 @@ import wandb
 from wandb.keras import WandbCallback
 import transformers
 import pickle
+import json
 
 from helpers_tf import go_deterministic
 from callbacks import LROneCycle, SpearmanrCallback
@@ -287,6 +288,9 @@ def main(**args):
     model.save_weights(os.path.join(args['out_dir'], f"best_weights_fold_{args['fold']}.h5"))
     with open(os.path.join(args['out_dir'], f"training_args_{args['fold']}.pickle"), 'wb') as f:
         pickle.dump(args, f)
+
+    with open(os.path.join(args['out_dir'], f"history_{args['fold']}.json"), 'w') as f:
+        json.dump({'rho_vals': cb.rho_vals, 'loss_vals': cb.loss_vals}, f)
 
 # python3 from_kaggle.py --fold 0
 if __name__ == '__main__':
