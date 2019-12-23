@@ -34,9 +34,13 @@ class SpearmanrCallback(tf.keras.callbacks.Callback):
         y_preds = self.model.predict(self.x_valid, batch_size=8)
         rho_val = compute_spearmanr(self.y_valid, y_preds)
 
-        #TODO add loss
+        bce = tf.keras.losses.BinaryCrossentropy()
+        loss_val = bce(self.y_valid, y_preds)
+
+        print(f"loss: {loss_val:.4f} (val), rho: {rho_val:.4f} (val)")
+
         if self.do_wandb:
-             wandb.log({'spearmanr/valid': rho_val})
+             wandb.log({'loss/valid': loss_val, 'spearmanr/valid': rho_val})
 
         if rho_val > self.best_rho:
             self.best_rho = rho_val
