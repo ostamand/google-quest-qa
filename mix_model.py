@@ -39,13 +39,13 @@ class MixModel(nn.Module):
 
     def __init__(self, qa_fc_size, qa_avg_pool_size, category_size):
         super(MixModel, self).__init__()
-        n_features = qa_fc_size + qa_avg_pool_size + category_size
+        n_features = qa_fc_size + qa_avg_pool_size
         self.fc_dp = nn.Dropout(0.3)
         self.fc = nn.Linear(n_features, len(targets))
 
     def forward(self, qa_fc, qa_avg_pool, category):
         #x = torch.cat([qa_fc, qa_avg_pool, category], dim=1)
-        x = torch.cat([qa_fc, qa_avg_pool, category], dim=1)
+        x = torch.cat([qa_fc, qa_avg_pool], dim=1)
         out = self.fc(self.fc_dp(x))
         return out 
 
