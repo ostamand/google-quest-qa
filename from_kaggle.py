@@ -172,7 +172,7 @@ class CustomCallback(tf.keras.callbacks.Callback):
                 self.model.predict(self.test_inputs, batch_size=self.batch_size)
             )
 
-def bert_model(model_path, maxlen):
+def bert_model(model_path, maxlen, dp=0.2):
     input_word_ids = tf.keras.layers.Input(
         (maxlen,), dtype=tf.int32, name='input_word_ids')
     input_masks = tf.keras.layers.Input(
@@ -187,7 +187,7 @@ def bert_model(model_path, maxlen):
     x = tf.keras.layers.GlobalAveragePooling1D()(sequence_output)
     #x_max = tf.keras.layers.GlobalMaxPooling1D()(sequence_output)
     #x = tf.keras.layers.Concatenate()([x, x_max])
-    x = tf.keras.layers.Dropout(0.2)(x)
+    x = tf.keras.layers.Dropout(dp)(x)
     out = tf.keras.layers.Dense(30, activation="sigmoid", name="dense_output")(x)
 
     model = tf.keras.models.Model(
@@ -221,7 +221,7 @@ def main(**args):
     K.clear_session()
     go_deterministic(args['seed'])
 
-    model = bert_model(args['model_dir'], args['maxlen'])
+    model = bert_model(args['model_dir'], args['maxlen'], args['dp'])
 
     tags = [] if args['fold'] is None else [str(args['fold'])]
     tags.append('from_kaggle')
@@ -285,6 +285,7 @@ if __name__ == '__main__':
     parser.add_argument("--fold", default=None, type=int)
     parser.add_argument("--maxlen", default=512, type=int)
     parser.add_argument("--bs", default=8, type=int)
+    parser.add_argument("--dp", default=0.2, type=float)
     parser.add_argument("--warmup", default=0.1, type=float)
     parser.add_argument("--warmdown", default=0.1, type=float)
     parser.add_argument("--lr", default=3e-5, type=float)
