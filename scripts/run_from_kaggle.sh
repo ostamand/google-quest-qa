@@ -4,6 +4,9 @@
     --model_dir model/bert_en_uncased_L-12_H-768_A-12 \
     --fold 0 \
     --bs 8 \
-    --dp 0.2 \
+    --dp 0.4 \
+    --t_max_len 30 \
+    --q_max_len 239 \
+    --a_max_len 239 \
     --label_smoothing 0 \
     --lr 3e-5 )

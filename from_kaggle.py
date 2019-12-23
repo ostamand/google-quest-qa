@@ -54,8 +54,7 @@ def _get_ids(tokens, tokenizer):
     input_ids = token_ids + [0] * (512-len(token_ids))
     return input_ids
 
-def _trim_input(tokenizer, title, question, answer, 
-                t_max_len=30, q_max_len=239, a_max_len=239):
+def _trim_input(tokenizer, title, question, answer, t_max_len=30, q_max_len=239, a_max_len=239, **kwargs):
 
     t = tokenizer.tokenize(title)
     q = tokenizer.tokenize(question)
@@ -106,12 +105,12 @@ def _convert_to_bert_inputs(title, question, answer, tokenizer):
 
     return [input_ids, input_masks, input_segments]
 
-def compute_input_arays(df, columns, tokenizer):
+def compute_input_arays(df, columns, tokenizer, **kwargs):
     input_ids, input_masks, input_segments = [], [], []
     for _, instance in tqdm(df[columns].iterrows()):
         t, q, a = instance.question_title, instance.question_body, instance.answer
 
-        t, q, a = _trim_input(tokenizer, t, q, a)
+        t, q, a = _trim_input(tokenizer, t, q, a, **kwargs)
 
         ids, masks, segments = _convert_to_bert_inputs(t, q, a, tokenizer)
         input_ids.append(ids)
@@ -211,8 +210,24 @@ def main(**args):
     input_categories = list(df_train.columns[[1,2,5]])
 
     outputs = compute_output_arrays(df_train, output_categories)
-    inputs = compute_input_arays(df_train, input_categories, tokenizer)
-    test_inputs = compute_input_arays(df_test, input_categories, tokenizer)
+
+    inputs = compute_input_arays(
+        df_train, 
+        input_categories, 
+        tokenizer, 
+        t_max_len=args['t_max_len'], 
+        q_max_len=args['q_max_len'], 
+        a_max_len=args['a_max_len']
+    )
+
+    test_inputs = compute_input_arays(
+        df_test, 
+        input_categories, 
+        tokenizer,
+        t_max_len=args['t_max_len'], 
+        q_max_len=args['q_max_len'], 
+        a_max_len=args['a_max_len']
+    )
 
     if args['fold'] is not None:
         tr_ids =  pd.read_csv(os.path.join(args['data_dir'],  f"train_ids_fold_{args['fold']}.csv"))['ids'].values
@@ -287,6 +302,9 @@ if __name__ == '__main__':
     parser.add_argument("--warmup", default=0.1, type=float)
     parser.add_argument("--warmdown", default=0.1, type=float)
     parser.add_argument("--lr", default=3e-5, type=float)
+    parser.add_argument("--t_max_len", default=30, type=int)
+    parser.add_argument("--q_max_len", default=239, type=int)
+    parser.add_argument("--a_max_len", default=239, type=int)
     parser.add_argument("--label_smoothing", default=0., type=float)
 
     args = parser.parse_args()
