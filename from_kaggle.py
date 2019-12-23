@@ -251,7 +251,7 @@ def main(**args):
     valid_outputs = outputs[val_ids]
 
     num_train_steps = ceil(train_inputs[0].shape[0] / args['bs']) * args['epochs']
-    #optimizer = transformers.create_optimizer(args['lr'], num_train_steps, args['warmup_steps'])
+    #optimizer = transformers.AdamWeightDecay(learning_rate=args['lr'], weight_decay_rate=0.01, clip_norm=10)
     optimizer = tf.keras.optimizers.Adam(learning_rate=args['lr'])
 
     lossf = tf.keras.losses.BinaryCrossentropy(label_smoothing=args['label_smoothing'])
@@ -290,7 +290,7 @@ def main(**args):
         pickle.dump(args, f)
 
     with open(os.path.join(args['out_dir'], f"history_{args['fold']}.json"), 'w') as f:
-        json.dump({'rho_vals': cb.rho_vals, 'loss_vals': cb.loss_vals}, f)
+        json.dump({'rho_vals': cb.rho_vals.tolist(), 'loss_vals': cb.loss_vals.tolist()}, f)
 
 # python3 from_kaggle.py --fold 0
 if __name__ == '__main__':
