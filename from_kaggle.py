@@ -17,6 +17,7 @@ from scipy.stats import rankdata
 import wandb
 from wandb.keras import WandbCallback
 import transformers
+import pickle
 
 from helpers_tf import go_deterministic
 from callbacks import LROneCycle, SpearmanrCallback
@@ -233,15 +234,15 @@ def main(**args):
     valid_inputs = [inputs[i][val_ids] for i in range(3)]
     valid_outputs = outputs[val_ids]
 
-    cb = SpearmanrCallback((valid_inputs, valid_outputs), restore=True, do_wandb=True)
-
-    num_train_steps = ceil(train_inputs[0].shape[0] / args['bs']) // args['accumulation_steps'] * args['epochs']
+    num_train_steps = ceil(train_inputs[0].shape[0] / args['bs']) * args['epochs']
     #optimizer = transformers.create_optimizer(args['lr'], num_train_steps, args['warmup_steps'])
     optimizer = tf.keras.optimizers.Adam(learning_rate=args['lr'])
 
     model.compile(loss='binary_crossentropy', optimizer=optimizer)
 
-    cycle = LROneCycle(num_train_steps, do_wandb=True)
+    cycle = LROneCycle(num_train_steps, up=args['warmup'], down=args['warmdown'], do_wandb=True)
+
+    cb = SpearmanrCallback((valid_inputs, valid_outputs), restore=True, do_wandb=True)
 
     custom_callback = CustomCallback(
         valid_data=(valid_inputs, valid_outputs), 
@@ -251,9 +252,9 @@ def main(**args):
     )
 
     callbacks = [
-        # cycle, 
-        # cb, 
-        custom_callback, 
+        cycle, 
+        cb, 
+        #custom_callback, 
         WandbCallback()
     ]
 
@@ -264,6 +265,14 @@ def main(**args):
         batch_size=args['bs'], 
         callbacks=callbacks
     )
+
+    # save to output dir
+
+    if not os.path.exists(args['out_dir']):
+        os.mkdir(args['out_dir'])
+    model.save_weights(os.path.join(args['out_dir'], f"best_weights_fold_{args['fold']}.h5"))
+    with open(os.path.join(args['out_dir'], f"training_args_{args['fold']}.pickle"), 'wb') as f:
+        pickle.dump(args, f)
 
 # python3 from_kaggle.py --fold 0
 if __name__ == '__main__':
@@ -276,9 +285,9 @@ if __name__ == '__main__':
     parser.add_argument("--fold", default=None, type=int)
     parser.add_argument("--maxlen", default=512, type=int)
     parser.add_argument("--bs", default=8, type=int)
+    parser.add_argument("--warmup", default=0.1, type=float)
+    parser.add_argument("--warmdown", default=0.1, type=float)
     parser.add_argument("--lr", default=3e-5, type=float)
-    parser.add_argument("--warmup_steps", default=500, type=int )    
-    parser.add_argument("--accumulation_steps", default=1, type=int)
 
     args = parser.parse_args()
 
