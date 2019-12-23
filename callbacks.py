@@ -37,7 +37,7 @@ class SpearmanrCallback(tf.keras.callbacks.Callback):
         bce = tf.keras.losses.BinaryCrossentropy()
         loss_val = bce(self.y_valid, y_preds).numpy()
 
-        print(f"loss: {loss_val:.4f} (val), rho: {rho_val:.4f} (val)")
+        print(f"\nloss: {loss_val:.4f} (val), rho: {rho_val:.4f} (val)")
 
         if self.do_wandb:
              wandb.log({'loss/valid': loss_val, 'spearmanr/valid': rho_val})
