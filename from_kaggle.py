@@ -242,7 +242,8 @@ def main(**args):
     tags = [] if args['fold'] is None else [str(args['fold'])]
     tags.append('from_kaggle')
 
-    wandb.init(project='google-quest-qa', tags=tags)
+    if args['do_wandb']:
+        wandb.init(project='google-quest-qa', tags=tags)
 
     train_inputs = [inputs[i][tr_ids] for i in range(3)]
     train_outputs = outputs[tr_ids]
@@ -258,9 +259,15 @@ def main(**args):
 
     model.compile(loss=lossf, optimizer=optimizer)
 
-    cycle = LROneCycle(num_train_steps, up=args['warmup'], down=args['warmdown'], do_wandb=True, min_lr=1e-6)
+    cycle = LROneCycle(
+        num_train_steps, 
+        up=args['warmup'], 
+        down=args['warmdown'], 
+        do_wandb=args['do_wandb'], 
+        min_lr=1e-6
+    )
 
-    cb = SpearmanrCallback((valid_inputs, valid_outputs), restore=True, do_wandb=True)
+    cb = SpearmanrCallback((valid_inputs, valid_outputs), restore=True, do_wandb=args['do_wandb'])
 
     custom_callback = CustomCallback(
         valid_data=(valid_inputs, valid_outputs), 
@@ -273,8 +280,10 @@ def main(**args):
         cycle, 
         cb, 
         #custom_callback, 
-        WandbCallback()
     ]
+
+    if args['do_wandb']:
+        callbacks.append(WandbCallback())
 
     history = model.fit(
         train_inputs, 
@@ -289,8 +298,13 @@ def main(**args):
     with open(os.path.join(args['out_dir'], f"training_args_{args['fold']}.pickle"), 'wb') as f:
         pickle.dump(args, f)
 
-    with open(os.path.join(args['out_dir'], f"history_{args['fold']}.json"), 'w') as f:
-        json.dump({'rho_vals': cb.rho_vals.tolist(), 'loss_vals': cb.loss_vals.tolist()}, f)
+    print(payload)
+    print(cb.rho_vals)
+    print(cb.loss_vals)
+
+    with open(os.path.join(args['out_dir'], f"history_{args['fold']}.pickle"), 'wb') as f:
+        payload = {'rho_vals': cb.rho_vals, 'loss_vals': cb.loss_vals}
+        pickle.dump(payload, f)
 
 # python3 from_kaggle.py --fold 0
 if __name__ == '__main__':
@@ -310,6 +324,7 @@ if __name__ == '__main__':
     parser.add_argument("--q_max_len", default=239, type=int)
     parser.add_argument("--a_max_len", default=239, type=int)
     parser.add_argument("--label_smoothing", default=0., type=float)
+    parser.add_argument("--do_wandb", action='store_true')
 
     args = parser.parse_args()
 
