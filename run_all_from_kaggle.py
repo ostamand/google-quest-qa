@@ -1,5 +1,9 @@
 from multiprocessing import Process
 from functools import partial
+import pickle
+import os
+
+import numpy as np
 
 from from_kaggle import main as run_train
 
@@ -29,5 +33,14 @@ def main():
         p.start()
         p.join()
 
+    # get results from pickled files
+    rho_vals = []
+    for fold_n in range(5):
+        with open(os.path.join(params['out_dir'], f"history_{fold_n}.pickle"), 'rb') as f:
+            result = pickle.load(f)
+            rho_vals.append(np.max(rho_vals))
+    
+    print(f"rho val: {np.mean(rho_vals):.4f} +- {np.std(rho_vals)}")
+        
 if __name__ == "__main__":
     main()
