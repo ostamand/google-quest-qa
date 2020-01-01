@@ -16,14 +16,14 @@ from knockknock import email_sender
 import wandb
 
 from constants import targets
-from modeling import BertOnQA
+from modeling import BertOnQA_2
 from training import Trainer
 
 from datasets import DatasetQA
 
 import pdb
 
-@email_sender(recipient_emails=["olivier.st.amand.1@gmail.com"], sender_email="yellow.bhaji@gmail.com")
+#@email_sender(recipient_emails=["olivier.st.amand.1@gmail.com"], sender_email="yellow.bhaji@gmail.com")
 def main(**args):
     # data
     train_df = pd.read_csv(os.path.join(args['data_dir'], 'train.csv'))
@@ -48,11 +48,11 @@ def main(**args):
 
     device = torch.device(args['device'])
 
-    params = BertOnQA.default_params()
+    params = BertOnQA_2.default_params()
     params['fc_dp'] = args['dp']
     params['bert_wd'] = args['bert_wd']
 
-    model = BertOnQA(len(targets), args['model_dir'], **params)
+    model = BertOnQA_2(len(targets), args['model_dir'], **params)
     model.to(device)
 
     if args['do_wandb']:
