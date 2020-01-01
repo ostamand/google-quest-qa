@@ -14,3 +14,4 @@ fire
 wandb
 torch
 knockknock
+bert-for-tf2

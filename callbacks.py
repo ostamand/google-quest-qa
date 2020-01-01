@@ -20,12 +20,14 @@ class SpearmanrCallback(tf.keras.callbacks.Callback):
         self.patience = {'lr': patience_lr, 'early': patience_early}
         self.restore, self.do_wandb = restore, do_wandb
         self.lr_scale, self.lr_min = lr_scale, lr_min
-
+        
         self._reset()
         
     def _reset(self):
         self.best_rho = -np.inf
         self.worst = {'lr': 0, 'early': 0}
+        self.rho_vals = []
+        self.loss_vals = []
         
     def on_train_begin(self, logs={}):
         self._reset()
@@ -33,10 +35,16 @@ class SpearmanrCallback(tf.keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs={}):
         y_preds = self.model.predict(self.x_valid, batch_size=8)
         rho_val = compute_spearmanr(self.y_valid, y_preds)
+        self.rho_vals.append(rho_val)
 
-        #TODO add loss
+        bce = tf.keras.losses.BinaryCrossentropy()
+        loss_val = bce(self.y_valid, y_preds).numpy()
+        self.loss_vals.append(loss_val)
+
+        print(f"\nloss: {loss_val:.4f} (val), rho: {rho_val:.4f} (val)")
+
         if self.do_wandb:
-             wandb.log({'spearmanr/valid': rho_val})
+             wandb.log({'loss/valid': loss_val, 'spearmanr/valid': rho_val})
 
         if rho_val > self.best_rho:
             self.best_rho = rho_val

@@ -1,0 +1,15 @@
+(cd ..; python3 from_kaggle.py \
+    --data_dir data \
+    --out_dir outputs/keras_qa \
+    --model_dir model/bert_en_uncased_L-12_H-768_A-12 \
+    --fold 0 \
+    --bs 8 \
+    --dp 0.1 \
+    --t_max_len 30 \
+    --q_max_len 239 \
+    --a_max_len 239 \
+    --label_smoothing 0. \
+    --warmup 0.5 \
+    --warmdown 0.5 \
+    --lr 2e-5 \
+    --do_wandb )
