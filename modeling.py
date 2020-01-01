@@ -84,8 +84,8 @@ class BertOnQA(nn.Module):
     def forward(self, input_ids, attention_mask=None, token_type_ids=None):
         seq, pooled = self.bert(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids)
         # was: out = self.fc(self.pooled_dp(pooled))
-        x_avg = self.avg_pool(seq.permute([0,2,1])).squeeze() # bs, 768
-        x_max = self.max_pool(seq.permute([0,2,1])).squeeze()
+        x_avg = self.avg_pool(seq.permute([0,2,1]))[:,:,0] # bs, 768
+        x_max = self.max_pool(seq.permute([0,2,1]))[:,:,0]
         x = torch.cat([x_avg, x_max], axis=1)
         # TODO add batchnorm, dropout, linear
         out = self.fc(self.fc_dp(x))
