@@ -13,7 +13,6 @@ import torch
 import torch.nn as nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
-#import wandb
 import transformers
 from sklearn.preprocessing import OneHotEncoder
 from scipy.stats import rankdata
@@ -24,6 +23,11 @@ from constants import targets
 from helpers_torch import set_seed
 from helpers import compute_spearmanr, EarlyStoppingSimple
 from schedulers import LearningRateWithUpDown
+
+try: 
+    import wandb
+except:
+    pass
 
 import pdb
 
@@ -96,8 +100,16 @@ class MixModelDataset(torch.utils.data.Dataset):
         for batch in tqdm(loader, total=len(loader)):
             tokens, token_types, _ = batch
             with torch.no_grad():
+                # make sure within embeddings range
+                tokens = torch.clamp(0, 30521, tokens).long()
+                # replace nans by UNK
+                # tokens[torch.isnan(tokens)] = tokenizer.unk_token_id
+                # check if token_type_ids are [0,1]
+
+                # error btwn here
                 outs = model(tokens.to(self.device), attention_mask=(tokens > 0).to(self.device), token_type_ids=token_types.to(self.device))
                 qa_fc.append(outs.detach().cpu().numpy())
+                # & here
         
         self.qa_fc = np.vstack(qa_fc).astype(np.float32)
         self.qa_avg_pool = np.vstack(qa_avg_pool).astype(np.float32)
@@ -189,9 +201,8 @@ def do_training(model, loaders, optimizer, params, do_wandb=False):
     model.to(device)
 
     if do_wandb:
-        pass
-        #wandb.init(project='google-quest-qa', tags=["mix_model"])
-        #wandb.watch(model, log=None)
+        wandb.init(project='google-quest-qa', tags=["mix_model"])
+        wandb.watch(model, log=None)
 
     it = 1 # global steps
 
@@ -233,8 +244,7 @@ def do_training(model, loaders, optimizer, params, do_wandb=False):
             logs['loss/train'] = loss.item() / bs
             
             if do_wandb:
-                pass
-                #wandb.log(logs, step=it)
+                wandb.log(logs, step=it)
 
             if running_loss:
                 running_loss = 0.98 * running_loss + 0.02 * loss.item() / bs
@@ -324,7 +334,6 @@ def main(params):
             pickle.dump(train_dataset.enc, f)
 
         # cleanup
-
         del model
         gc.collect()
         torch.cuda.empty_cache()
