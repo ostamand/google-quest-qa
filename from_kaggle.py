@@ -298,13 +298,13 @@ def main(**args):
     with open(os.path.join(args['out_dir'], f"training_args_{args['fold']}.pickle"), 'wb') as f:
         pickle.dump(args, f)
 
-    print(payload)
-    print(cb.rho_vals)
-    print(cb.loss_vals)
-
     with open(os.path.join(args['out_dir'], f"history_{args['fold']}.pickle"), 'wb') as f:
         payload = {'rho_vals': cb.rho_vals, 'loss_vals': cb.loss_vals}
         pickle.dump(payload, f)
+
+    print(payload)
+    print(cb.rho_vals)
+    print(cb.loss_vals)
 
 # python3 from_kaggle.py --fold 0
 if __name__ == '__main__':
