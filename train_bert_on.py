@@ -12,7 +12,11 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from apex import amp
 from knockknock import email_sender
-import wandb
+
+try:
+    import wandb
+except:
+    pass
 
 from constants import targets
 from modeling import BertOnQuestions
@@ -26,7 +30,7 @@ def apply_tokenizer(tokenizer, texts: List[str], maxlen) -> np.array:
         tokens[i, :len(text_tokens)] = text_tokens 
     return tokens
 
-@email_sender(recipient_emails=["olivier.st.amand.1@gmail.com"], sender_email="yellow.bhaji@gmail.com")
+#@email_sender(recipient_emails=["olivier.st.amand.1@gmail.com"], sender_email="yellow.bhaji@gmail.com")
 def main(**args):
     # data
     
@@ -90,7 +94,8 @@ def main(**args):
     model.to(device)
 
     if args['do_wandb']:
-        wandb.init(project=args['project'])
+        tags = ['questions'] if not args['do_answer'] else ['answers']
+        wandb.init(project=args['project'], tags=tags)
         wandb.watch(model)
 
     optimizer = transformers.AdamW(model.optimizer_grouped_parameters, lr=args['lr1'])
@@ -126,6 +131,7 @@ def main(**args):
     suffix = f"_fold_{args['fold']}" if args['fold'] is not None else ""
 
     torch.save(model.state_dict(), os.path.join(out_dir, f"model_state_dict{suffix}.pth"))
+
     torch.save(args, os.path.join(out_dir, f"training_args{suffix}.bin"))
 
 # example: python train_bert_on_questions.py --do_apex --do_wandb --maxlen 256 --bs 8 --dp 0.1 --fold 0 --out_dir test
@@ -136,7 +142,7 @@ if __name__ == '__main__':
     parser.add_argument("--epochs1", default=10, type=int)
     parser.add_argument("--epochs2", default=5, type=int)
     parser.add_argument("--lr1", default=1e-2, type=float)
-    parser.add_argument("--lr2", default=2e-5, type=int)
+    parser.add_argument("--lr2", default=2e-5, type=float)
     parser.add_argument("--model_dir", default="model/bert-base-uncased", type=str)
     parser.add_argument("--out_dir", default="outputs/bert_questions", type=str)
     parser.add_argument("--data_dir", default="data", type=str)
