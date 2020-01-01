@@ -2,6 +2,7 @@ import argparse
 import os
 import gc
 from typing import List
+from functools import partial
 
 import torch
 import torch.nn as nn
@@ -18,10 +19,13 @@ try:
 except:
     pass
 
+import pdb
+
 from constants import targets
 from modeling import BertOnQuestions
 from training import Trainer
 
+# not used anymore
 def apply_tokenizer(tokenizer, texts: List[str], maxlen) -> np.array:
     tokens = np.zeros((len(texts), maxlen), dtype=np.long)
     for i, text in enumerate(texts):
@@ -30,30 +34,52 @@ def apply_tokenizer(tokenizer, texts: List[str], maxlen) -> np.array:
         tokens[i, :len(text_tokens)] = text_tokens 
     return tokens
 
+def process_for_questions(tokenizer, row):
+    t = tokenizer.encode(row['question_title'], max_length=512, add_special_tokens=False)
+    q = tokenizer.encode(row['question_body'],  max_length=512, add_special_tokens=False)
+
+    t_len = len(t)
+    q_len = len(q)
+
+    # [CLS] question title [SEP] question body [SEP] [PAD]
+
+    tokens = [tokenizer.cls_token_id] + (512-1)*[tokenizer.pad_token_id] 
+
+    question_title_trunc = t
+
+    if t_len + q_len + 3 > 512:
+        question_body_trunc = q[:512-t_len-3]
+    else:
+        question_body_trunc = q
+
+    combined = question_title_trunc + [tokenizer.sep_token_id] + question_body_trunc + [tokenizer.sep_token_id] 
+
+    tokens[1:1+len(combined)] = combined
+
+    token_types = [0] * (len(question_title_trunc)+2) + (len(question_body_trunc)+1) * [1] + (512 - len(question_title_trunc) - len(question_body_trunc) - 3) * [0]
+
+    return tokens, token_types
+
 #@email_sender(recipient_emails=["olivier.st.amand.1@gmail.com"], sender_email="yellow.bhaji@gmail.com")
 def main(**args):
     # data
     
     train_df = pd.read_csv(os.path.join(args['data_dir'], 'train.csv'))
 
-    # answer
-    if args['do_answer']:
-        targets_for_tr = [x for x in targets if x.startswith('answer')]
-        texts = train_df.answer.values
-    # questions
-    else:
-        targets_for_tr = [x for x in targets if x.startswith('question')]
-        #texts = train_df.question_body.values
-        #TODO try adding [SEP]
-        #TODO try adding token_types...
-        #TODO change pooling
-        #TODO increase dp
-        texts = train_df.apply(lambda x: x['question_title'] + ' ' + x['question_body'], axis=1)
+    tokenizer = transformers.BertTokenizer.from_pretrained(args['model_dir'])
+    
+    targets_for_tr = [x for x in targets if x.startswith('question')]
+    train_df['all'] = train_df.apply(lambda x: process_for_questions(tokenizer, x), axis=1)
+
+    tokens = np.stack(train_df['all'].apply(lambda x: x[0]).values).astype(np.long)
+    token_types = np.stack(train_df['all'].apply(lambda x: x[1]).values).astype(np.long)
+
+    """
+    texts = train_df.apply(lambda x: x['question_title'] + ' ' + x['question_body'], axis=1)
+    tokens =  apply_tokenizer(tokenizer, texts, args['maxlen'])
+    """
 
     labels = train_df[targets_for_tr].values.astype(np.float32)
-
-    tokenizer = transformers.BertTokenizer.from_pretrained(args['model_dir'])
-    tokens =  apply_tokenizer(tokenizer, texts, args['maxlen'])
 
     if args['fold'] is not None:
         tr_ids = pd.read_csv(os.path.join(args['data_dir'], f"train_ids_fold_{args['fold']}.csv"))['ids'].values
@@ -63,12 +89,10 @@ def main(**args):
         tr_ids = np.arange(labels.shape[0])
         val_ids = None
 
-    x_train = tokens[tr_ids]
-    y_train = labels[tr_ids]
-
     train_dataset = torch.utils.data.TensorDataset(
-        torch.tensor(x_train, dtype=torch.long), 
-        torch.tensor(y_train, dtype=torch.float32)
+        torch.tensor(tokens[tr_ids], dtype=torch.long), 
+        torch.tensor(token_types[tr_ids], dtype=torch.long), 
+        torch.tensor(labels[tr_ids], dtype=torch.float32)
     )
 
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args['bs'], shuffle=True)
@@ -77,10 +101,10 @@ def main(**args):
     if val_ids is not None:
         x_valid = tokens[val_ids]
         y_valid = labels[val_ids]
-
         valid_dataset = torch.utils.data.TensorDataset(
-            torch.tensor(x_valid, dtype=torch.long), 
-            torch.tensor(y_valid, dtype=torch.float32)
+            torch.tensor(tokens[val_ids], dtype=torch.long), 
+            torch.tensor(token_types[val_ids], dtype=torch.long), 
+            torch.tensor(labels[val_ids], dtype=torch.float32)
         )
         valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=args['bs'], shuffle=False)
     
@@ -94,8 +118,7 @@ def main(**args):
     model.to(device)
 
     if args['do_wandb']:
-        tags = ['questions'] if not args['do_answer'] else ['answers']
-        wandb.init(project=args['project'], tags=tags)
+        wandb.init(project=args['project'], tags=['questions'])
         wandb.watch(model)
 
     optimizer = transformers.AdamW(model.optimizer_grouped_parameters, lr=args['lr1'])
@@ -157,7 +180,6 @@ if __name__ == '__main__':
     parser.add_argument("--do_wandb", action='store_true')
     parser.add_argument("--do_tb", action='store_true')
     parser.add_argument("--do_head", action='store_true')
-    parser.add_argument("--do_answer", action='store_true')
     parser.add_argument("--warmup", default=0.5, type=float)
     parser.add_argument("--warmdown", default=0.5, type=float)
     parser.add_argument("--clip", default=None, type=float)
