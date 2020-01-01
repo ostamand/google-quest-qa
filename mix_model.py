@@ -48,8 +48,7 @@ class MixModel(nn.Module):
         self.fc = nn.Linear(n_features, len(targets))
 
     def forward(self, qa_fc, qa_avg_pool, category):
-        #x = torch.cat([qa_fc, qa_avg_pool, category], dim=1)
-        x = torch.cat([qa_fc, qa_avg_pool], dim=1)
+        x = torch.cat([qa_fc, qa_avg_pool, category], dim=1)
         out = self.fc(self.fc_dp(x))
         return out 
 
@@ -100,16 +99,8 @@ class MixModelDataset(torch.utils.data.Dataset):
         for batch in tqdm(loader, total=len(loader)):
             tokens, token_types, _ = batch
             with torch.no_grad():
-                # make sure within embeddings range
-                tokens = torch.clamp(0, 30521, tokens).long()
-                # replace nans by UNK
-                # tokens[torch.isnan(tokens)] = tokenizer.unk_token_id
-                # check if token_type_ids are [0,1]
-
-                # error btwn here
                 outs = model(tokens.to(self.device), attention_mask=(tokens > 0).to(self.device), token_type_ids=token_types.to(self.device))
                 qa_fc.append(outs.detach().cpu().numpy())
-                # & here
         
         self.qa_fc = np.vstack(qa_fc).astype(np.float32)
         self.qa_avg_pool = np.vstack(qa_avg_pool).astype(np.float32)
