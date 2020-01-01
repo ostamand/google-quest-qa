@@ -6,5 +6,4 @@
         --warmdown 0.5 \
         --out_dir outputs/mix_model_2 \
         --sub_type 2 \
-        --ckpt_dir outputs/bert_on_all_1 \
-        --do_cache )
+        --ckpt_dir outputs/bert_on_all_1  )

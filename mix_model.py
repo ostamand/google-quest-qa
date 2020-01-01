@@ -43,7 +43,7 @@ class MixModel(nn.Module):
 
     def __init__(self, qa_fc_size, qa_avg_pool_size, category_size):
         super(MixModel, self).__init__()
-        n_features = qa_fc_size + qa_avg_pool_size
+        n_features = qa_fc_size + qa_avg_pool_size + category_size
         self.fc_dp = nn.Dropout(0.3)
         self.fc = nn.Linear(n_features, len(targets))
 
@@ -111,7 +111,6 @@ class MixModelDataset(torch.utils.data.Dataset):
         torch.cuda.empty_cache()
 
         # Category data
-
         find = re.compile(r"^[^.]*")
 
         self.df['netloc'] = self.df['url'].apply(lambda x: re.findall(find, urlparse(x).netloc)[0])
@@ -127,6 +126,9 @@ class MixModelDataset(torch.utils.data.Dataset):
         if self.do_cache and self.cache_file is not None:
             with open(path_cache_file, 'wb') as f:
                 pickle.dump((self.labels, self.qa_fc, self.qa_avg_pool, self.category), f)
+
+        # Features data
+        # TODO
 
     def __len__(self):
         return len(self.df)
@@ -260,8 +262,7 @@ def do_training(model, loaders, optimizer, params, do_wandb=False):
             logs['loss/valid'] = loss_val
 
             if do_wandb:
-                pass
-                #wandb.log(logs)
+                wandb.log(logs)
 
             val_rhos.append(rho_val)
 
@@ -358,7 +359,7 @@ def get_default_params():
         'data_dir': 'data',
         'fold_dir': 'data',
         'model_dir': 'model',
-        'ckpt_dir': 'outputs/bert_on_all', 
+        'ckpt_dir': 'outputs/bert_on_all_1', 
         'sub_type': 1, 
         'do_cache': False, 
         'out_dir': 'outputs/mix_model'
@@ -368,7 +369,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--bs", default=16, type=int)
     parser.add_argument("--epochs", default=100, type=int)
-    parser.add_argument("--lr", default=1e-4, type=int) # 1e-4
+    parser.add_argument("--lr", default=1e-4, type=float) # 1e-4
     parser.add_argument("--seed", default=42, type=int)
     parser.add_argument("--warmup", default=0.5, type=float)
     parser.add_argument("--warmdown", default=0.5, type=float)
@@ -376,7 +377,7 @@ if __name__ == '__main__':
     parser.add_argument("--out_dir", default="outputs/mix_model", type=str)
     parser.add_argument("--fold_dir", default="data", type=str)
     parser.add_argument("--model_dir", default="model", type=str)
-    parser.add_argument("--ckpt_dir", default="outputs/bert_on_all", type=str)
+    parser.add_argument("--ckpt_dir", default="outputs/bert_on_all_1", type=str)
     parser.add_argument("--sub_type", default=1, type=int)
     parser.add_argument("--do_cache", action='store_true')
 

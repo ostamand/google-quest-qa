@@ -120,10 +120,8 @@ class BertOnQA_2(nn.Module):
         #self.bert.load_state_dict(torch.load(os.path.join(model_dir, 'pytorch_model.bin')), strict=False)
         self.bert = transformers.BertModel.from_pretrained(model_dir, config=config)
         self.fc_dp = nn.Dropout(kwargs['fc_dp'] if 'fc_dp' in kwargs else 0.)
-        self.fc = nn.Linear(self.bert.config.hidden_size, output_shape)
-        self.avg_pool = nn.AvgPool1d(512)
-        self.max_pool = nn.MaxPool1d(512)
-
+        self.fc = nn.Linear(self.bert.config.hidden_size*2, output_shape)
+        
         # prepare parameters for optimizer
         no_decay = ['bias', 'LayerNorm.weight']
         self.optimizer_grouped_parameters = [
@@ -139,9 +137,14 @@ class BertOnQA_2(nn.Module):
         h11 = hidden_states[-2][:, 0].reshape((-1, 1, 768))
         h10 = hidden_states[-3][:, 0].reshape((-1, 1, 768))
         h9  = hidden_states[-4][:, 0].reshape((-1, 1, 768))
-        all_h = torch.cat([h9, h10, h11, h12], 1)
-        mean_pool = torch.mean(all_h, 1)
-        out = self.fc(self.fc_dp(mean_pool))
+        all_h = torch.cat([h9, h10, h11, h12], axis=1)
+
+        mean_pool = torch.mean(all_h, axis=1)
+        max_pool, _ = torch.max(all_h, axis=1)
+
+        x = torch.cat([mean_pool, max_pool], axis=1)
+        out = self.fc(self.fc_dp(x))
+
         return out
     
     def train_head_only(self):
