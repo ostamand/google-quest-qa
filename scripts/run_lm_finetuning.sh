@@ -1,0 +1,25 @@
+
+(cd ..; python3 run_lm_finetuning.py \
+    --train_data_file data/train_lm.txt \
+    --eval_data_file data/valid_lm.txt \
+    --output_dir outputs/lm_finetuning \
+    --overwrite_output_dir \
+    --mlm \
+    --model_name_or_path model/bert-base-uncased \
+    --cache_dir .tmp \
+    --do_lower_case \
+    --do_train \
+    --do_eval \
+    --evaluate_during_training \
+    --fp16 \
+    --logging_steps 500 \
+    --save_steps 1000 \
+    --save_total_limit 2 \
+    --gradient_accumulation_steps 2 \
+    --per_gpu_train_batch_size 4 \
+    --block_size 510 \
+    --learning_rate 5e-5 \
+    --num_train_epochs 20 \
+    --weight_decay 0.01 \
+    --warmup_steps 500 \
+    --seed 42)

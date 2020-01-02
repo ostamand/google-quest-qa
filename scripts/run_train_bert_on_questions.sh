@@ -1,13 +1,13 @@
-(cd ..; python3 train_bert_on.py \
+(cd ..; python3 train_bert_on_questions.py \
         --do_apex \
         --do_wandb \
         --maxlen 512 \
+        --clip 10 \
         --bs 4 \
         --accumulation_steps 2 \
-        --dp 0.2 \
+        --dp 0.1 \
         --lr1 1e-2 \
-        --fold 0 \
+        --lr2 2e-5 \
         --do_head \
-        --out_dir outputs/bert_on_questions)
-# TODO:
-# - Try dp 0.2
+        --fold 0 \
+        --out_dir outputs/bert_on_questions )
