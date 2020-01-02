@@ -33,22 +33,26 @@ class BertOnQuestions(nn.Module):
         _, pooled = self.bert(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids)
         return self.fc(self.pooled_dp(pooled))
         """
+
         seq, pooled, hidden_states = self.bert(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids)
         
+        """
         x_avg = self.avg_pool(seq.permute([0,2,1]))[:,:,0] # bs, 768
         x_max = self.max_pool(seq.permute([0,2,1]))[:,:,0]
         x = torch.cat([x_avg, x_max], axis=1)
-        
         """
+
         h12 = hidden_states[-1][:, 0].reshape((-1, 1, 768))
         h11 = hidden_states[-2][:, 0].reshape((-1, 1, 768))
-        h10 = hidden_states[-3][:, 0].reshape((-1, 1, 768))
-        h9  = hidden_states[-4][:, 0].reshape((-1, 1, 768))
-        all_h = torch.cat([h9, h10, h11, h12], axis=1)
+        #h10 = hidden_states[-3][:, 0].reshape((-1, 1, 768))
+        #h9  = hidden_states[-4][:, 0].reshape((-1, 1, 768))
+        #all_h = torch.cat([h9, h10, h11, h12], axis=1)
+        all_h = torch.cat([h11, h12], axis=1)
+
         mean_pool = torch.mean(all_h, axis=1)
         max_pool, _ = torch.max(all_h, axis=1)
+
         x = torch.cat([mean_pool, max_pool], axis=1)
-        """
 
         out = self.fc(self.fc_dp(x))
         
