@@ -47,6 +47,8 @@ class Trainer():
                 self.params[k] = v
     
     def train(self, model, loaders, optimizer, params=None, **kwargs):
+        rho_vals = []
+
         self._setup_params(**kwargs)
         p = self.params
         
@@ -153,6 +155,8 @@ class Trainer():
                 logs['loss/valid'] = metrics['loss']
                 logs['spearmanr/valid'] = metrics['spearmanr']
                 logger.add_scalars(logs)
+
+                rho_vals.append(logs['spearmanr/valid'])
                 
                 print(f"rho: {metrics['spearmanr']:.4f} (val), loss: {metrics['loss']:.4f} (val)")
         
@@ -160,6 +164,8 @@ class Trainer():
             early_stopping.restore()
 
         logger.close()
+
+        return rho_vals
     
     def evaluate(self, model, loader):
         device = torch.device(self.params['device'])

@@ -3,6 +3,7 @@ import os
 import gc
 from typing import List
 import math
+import pickle
 
 import torch
 import torch.nn as nn
@@ -13,7 +14,11 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from apex import amp
 from knockknock import email_sender
-import wandb
+
+try:
+    import wandb
+except:
+    pass
 
 from constants import targets
 from modeling import BertOnQA_2
@@ -71,7 +76,7 @@ def main(**args):
 
     # TODO try: x = tf.keras.layers.GlobalAveragePooling1D()(sequence_output)
     trainer = Trainer(**args)
-    trainer.train(model, loaders, optimizer, epochs=args['epochs'], warmup=args['warmup'], warmdown=args['warmdown'])
+    rho_vals = trainer.train(model, loaders, optimizer, epochs=args['epochs'], warmup=args['warmup'], warmdown=args['warmdown'])
 
     # save trained model and features
 
@@ -81,6 +86,9 @@ def main(**args):
 
     torch.save(model.state_dict(), os.path.join(out_dir, f"model_state_dict_fold_{args['fold']}.pth"))
     torch.save(args, os.path.join(out_dir, f"training_args_fold_{args['fold']}.bin"))
+
+    with open(os.path.join(args['out_dir'], f"history_{args['fold']}.pickle"), 'rb') as f:
+        pickle.dump(rho_vals, f)
 
 # python3  train_bert_on_all.py --do_apex --do_wandb --bs 4 --fold 0 --out_dir test_on_all --dp 0.1
 # python3 train_bert_on_all.py --do_apex --do_wandb --bs 4 --fold 0 --out_dir outputs/test_on_all --dp 0.1 --bert_wd 0.01 --model_dir model/bert-base-uncased --warmup 0.5 --warmdown 0.5
