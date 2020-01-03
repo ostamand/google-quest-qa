@@ -90,6 +90,32 @@ def main(**args):
     with open(os.path.join(args['out_dir'], f"history_{args['fold']}.pickle"), 'wb') as f:
         pickle.dump(rho_vals, f)
 
+
+def get_default_params():
+    return {
+        'epochs': 5, 
+        'bert_wd': 0.01,
+        'lr': 2e-5, 
+        'max_len_q_b': 150,
+        'model_dir': 'outputs/lm_finetuning_all ',
+        'out_dir': 'outputs/bert_on_all_lm',
+        'data_dir': 'data',
+        'fold': 0,
+        'log_dir': '.logs',
+        'seed': 42,
+        'bs': 4,
+        'dp': 0.1,
+        'device': 'cuda',
+        'do_apex': True,
+        'do_wandb': True,
+        'warmup': 0.5,
+        'warmdown': 0.5,
+        'clip': None,
+        'accumulation_steps': 2,
+        'project': 'google-quest-qa',
+        'head_ckpt': None
+    }
+
 # python3  train_bert_on_all.py --do_apex --do_wandb --bs 4 --fold 0 --out_dir test_on_all --dp 0.1
 # python3 train_bert_on_all.py --do_apex --do_wandb --bs 4 --fold 0 --out_dir outputs/test_on_all --dp 0.1 --bert_wd 0.01 --model_dir model/bert-base-uncased --warmup 0.5 --warmdown 0.5
 if __name__ == '__main__':
