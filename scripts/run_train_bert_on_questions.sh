@@ -10,4 +10,5 @@
         --lr2 2e-5 \
         --do_head \
         --fold 0 \
+        --model_dir outputs/lm_finetuning_all \
         --out_dir outputs/bert_on_questions )

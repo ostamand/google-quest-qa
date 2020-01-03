@@ -131,6 +131,23 @@ class BertOnQA(nn.Module):
             'fc_wd': 0.0
         }
 
+
+class CustomBertPooling(nn.Module):
+    def __init__(self):
+        super(CustomBertPooling, self).__init__()
+
+    def forward(self, hidden_states):
+        h12 = hidden_states[-1][:, 0].reshape((-1, 1, 768))
+        h11 = hidden_states[-2][:, 0].reshape((-1, 1, 768))
+        h10 = hidden_states[-3][:, 0].reshape((-1, 1, 768))
+        h9  = hidden_states[-4][:, 0].reshape((-1, 1, 768))
+        all_h = torch.cat([h9, h10, h11, h12], axis=1)
+
+        mean_pool = torch.mean(all_h, axis=1)
+        max_pool, _ = torch.max(all_h, axis=1)
+
+        return mean_pool, max_pool
+
 class BertOnQA_2(nn.Module):
     def  __init__(self, output_shape, model_dir, **kwargs):
         super(BertOnQA_2, self).__init__()
@@ -142,6 +159,7 @@ class BertOnQA_2(nn.Module):
         self.bert = transformers.BertModel.from_pretrained(model_dir, config=config)
         self.fc_dp = nn.Dropout(kwargs['fc_dp'] if 'fc_dp' in kwargs else 0.)
         self.fc = nn.Linear(self.bert.config.hidden_size*2, output_shape)
+        self.pooling = CustomBertPooling()
         
         # prepare parameters for optimizer
         no_decay = ['bias', 'LayerNorm.weight']
@@ -153,19 +171,9 @@ class BertOnQA_2(nn.Module):
         
     def forward(self, input_ids, attention_mask=None, token_type_ids=None):
         seq, pooled, hidden_states = self.bert(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids)
-        # ref: https://www.kaggle.com/c/google-quest-challenge/discussion/123770
-        h12 = hidden_states[-1][:, 0].reshape((-1, 1, 768))
-        h11 = hidden_states[-2][:, 0].reshape((-1, 1, 768))
-        h10 = hidden_states[-3][:, 0].reshape((-1, 1, 768))
-        h9  = hidden_states[-4][:, 0].reshape((-1, 1, 768))
-        all_h = torch.cat([h9, h10, h11, h12], axis=1)
-
-        mean_pool = torch.mean(all_h, axis=1)
-        max_pool, _ = torch.max(all_h, axis=1)
-
-        x = torch.cat([mean_pool, max_pool], axis=1)
+        avg_pool, max_pool = self.pooling(hidden_states)
+        x = torch.cat([avg_pool, max_pool], axis=1)
         out = self.fc(self.fc_dp(x))
-
         return out
     
     def train_head_only(self):

@@ -44,7 +44,8 @@ def main():
             rho_vals = pickle.load(f)
             all_rho_vals.append(np.max(rho_vals))
     
-    print(f"rho val: {np.mean(rho_vals):.4f} +- {np.std(rho_vals)}")
+    print(all_rho_vals)
+    print(f"rho val: {np.mean(all_rho_vals):.4f} +- {np.std(all_rho_vals)}")
         
 if __name__ == "__main__":
     main()
