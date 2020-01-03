@@ -7,33 +7,35 @@ import numpy as np
 
 from train_bert_on_all import main as run_train
 
-import pdb
-
 def main():
     params = {
+        'seed': 42,
         'do_apex': True,
         'do_wandb': True,
+        'do_tb': False,
         'bs': 4, 
         'fold': 0, 
         'accumulation_step': 2,
         'epochs': 5,
         'lr': 2e-5, 
-        'out_dir': 'outputs/bert_on_all_lm'
+        'out_dir': 'outputs/bert_on_all_lm',
         'dp': 0.,
         'bert_wd': 0.01,
         'max_len_q_b': 150, 
-        'model_dir': 'outputs/lm_finetuning'
+        'model_dir': 'outputs/lm_finetuning_all',
+        'data_dir': 'data',
+        'device': 'cuda',
+        'project': 'google-quest-qa',
         'warmup': 0.5, 
-        'warmdown': 0.5
+        'warmdown': 0.5, 
+        'clip': None
     }
     
-    for fold_n in range(1):
+    for fold_n in range(5):
         params['fold'] = fold_n
         p = Process(target=run_train, kwargs=params)
         p.start()
         p.join()
-
-    pdb.set_trace()
 
     # get results from pickled files
     all_rho_vals = []

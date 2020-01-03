@@ -87,7 +87,7 @@ def main(**args):
     torch.save(model.state_dict(), os.path.join(out_dir, f"model_state_dict_fold_{args['fold']}.pth"))
     torch.save(args, os.path.join(out_dir, f"training_args_fold_{args['fold']}.bin"))
 
-    with open(os.path.join(args['out_dir'], f"history_{args['fold']}.pickle"), 'rb') as f:
+    with open(os.path.join(args['out_dir'], f"history_{args['fold']}.pickle"), 'wb') as f:
         pickle.dump(rho_vals, f)
 
 # python3  train_bert_on_all.py --do_apex --do_wandb --bs 4 --fold 0 --out_dir test_on_all --dp 0.1

@@ -10,6 +10,6 @@
         --dp 0. \
         --bert_wd 0.01 \
         --max_len_q_b 150 \
-        --model_dir outputs/lm_finetuning \
+        --model_dir outputs/lm_finetuning_all \
         --warmup 0.5 \
         --warmdown 0.5)
