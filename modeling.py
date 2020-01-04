@@ -201,7 +201,7 @@ class BertOnQA_2(nn.Module):
         self.pooling = CustomBertPooling()
 
         self.layer_1 = torch.nn.Sequential(
-            nn.Dropout(p=0.2, inplace=True),
+            #nn.Dropout(p=0.2, inplace=True),
             nn.Linear(768*3, output_shape)
         )
         
