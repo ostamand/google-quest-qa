@@ -130,7 +130,7 @@ if __name__ == '__main__':
     parser.add_argument("--model_dir", default="model/bert-base-uncased-qa", type=str)
     parser.add_argument("--out_dir", default="outputs/bert-base-uncased-qa", type=str)
     parser.add_argument("--data_dir", default="data", type=str)
-    parser.add_argument("--fold", default=0, type=int)
+    parser.add_argument("--fold", default=None, type=int)
     parser.add_argument("--log_dir", default=".logs", type=str)
     parser.add_argument("--seed", default=42, type=int)
     parser.add_argument("--bs", default=8, type=int)

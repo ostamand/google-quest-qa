@@ -23,10 +23,17 @@ def main(params):
     model.to(device)
 
     test_preds_per_fold = []
-    for i in range(5):
+
+    n = 1 if params['single_ckpt'] else 5
+    for i in range(n):
         test_preds = []
 
-        model.load_state_dict(torch.load(os.path.join(params['ckpt_dir'], f"model_state_dict_fold_{i}.pth")))
+        if params['single_ckpt']:
+            ckpt_name = os.path.join(params['ckpt_dir'], f"model_state_dict_fold_None.pth")
+        else:
+            ckpt_name = os.path.join(params['ckpt_dir'], f"model_state_dict_fold_{i}.pth")
+
+        model.load_state_dict(torch.load(ckpt_name))
         model.eval()
 
         for batch_i, batch in enumerate(loader):
@@ -49,9 +56,11 @@ def get_default_params():
         'ckpt_dir': 'outputs/bert_on_all_lm',
         'data_dir': 'data',
         'bs': 4, 
-        'device': 'cuda'
+        'device': 'cuda',
+        'single_ckpt': False
     }
 
+# python3 submit_bert_all_lm.py --single_ckpt --ckpt_dir outputs/bert_on_all_lm_2_no_folds 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_dir", default="model/bert-base-uncased", type=str)
@@ -59,6 +68,7 @@ if __name__ == '__main__':
     parser.add_argument("--data_dir", default="data", type=str)
     parser.add_argument("--bs", default=4, type=int)
     parser.add_argument("--device", default="cuda", type=str)
+    parser.add_argument("--single_ckpt", action='store_true')
     
     args = parser.parse_args()
 
