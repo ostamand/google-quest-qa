@@ -6,6 +6,7 @@ import pickle
 from urllib.parse import urlparse
 import os 
 import pickle
+from multiprocessing import Process, Manager
 
 import pandas as pd
 import numpy as np
@@ -18,11 +19,12 @@ from sklearn.preprocessing import OneHotEncoder
 from scipy.stats import rankdata
 
 from datasets import DatasetQA
-from modeling import BertOnQA
+from modeling import BertOnQA_2
 from constants import targets
 from helpers_torch import set_seed
 from helpers import compute_spearmanr, EarlyStoppingSimple
 from schedulers import LearningRateWithUpDown
+from sentence_encodings import get_use_features
 
 try: 
     import wandb
@@ -41,58 +43,49 @@ outputs/bert_on_all
 
 class MixModel(nn.Module):
 
-    def __init__(self, qa_fc_size, qa_avg_pool_size, category_size):
+    def __init__(self, qa_fc_size, qa_pool_size, use_embeds_size, use_dist_size, category_size):
         super(MixModel, self).__init__()
-        n_features = qa_fc_size + qa_avg_pool_size + category_size
-        self.fc_dp = nn.Dropout(0.3)
+        n_features = qa_fc_size + qa_pool_size + category_size + use_dist_size
+        self.fc_dp = nn.Dropout(0.4)
         self.fc = nn.Linear(n_features, len(targets))
 
-    def forward(self, qa_fc, qa_avg_pool, category):
-        x = torch.cat([qa_fc, qa_avg_pool, category], dim=1)
+    def forward(self, qa_fc, qa_pool, use_embed, use_dist, category):
+        x = torch.cat([qa_fc, qa_pool, use_dist, category], dim=1)
         out = self.fc(self.fc_dp(x))
         return out 
 
 class MixModelDataset(torch.utils.data.Dataset):
 
-    def __init__(self, model_dir, ckpt_dir, df, fold_n, enc=None, cache_file=None, do_cache=False, device='cuda'):
+    def __init__(self, model_dir, ckpt_dir, use_dir, df, fold_n, enc=None, cache_file=None, do_cache=False, device='cuda'):
         super(MixModelDataset, self).__init__()
         self.df, self.fold_n = df, fold_n
         self.enc = enc
         self.model_dir, self.ckpt_dir, self.cache_file = model_dir, ckpt_dir, cache_file
+        self.use_dir = use_dir
         self.do_cache = do_cache
 
         self.device = torch.device(device)
 
         self._get_data()
 
-    def _get_data(self):
-        # QA data 
-        path_cache_file = os.path.join('.tmp', self.cache_file) if self.cache_file is not None else None
-
-        if self.do_cache and self.cache_file is not None:
-            if os.path.exists(path_cache_file):
-                with open(path_cache_file, 'rb') as f:
-                    self.labels, self.qa_fc, self.qa_avg_pool, self.category = pickle.load(f)
-                return
-
-        tokenizer = transformers.BertTokenizer.from_pretrained(os.path.join(self.model_dir, 'bert-base-uncased'))
+    def _run_qa_data(self):
+        tokenizer = transformers.BertTokenizer.from_pretrained(self.model_dir)
         dataset = DatasetQA(self.df, tokenizer, max_len_q_b=150, max_len_q_t=30)
-        self.labels = dataset.labels
 
         loader = torch.utils.data.DataLoader(dataset, batch_size=4, shuffle=False)
 
         params = torch.load(os.path.join(self.ckpt_dir, f'training_args_fold_{self.fold_n}.bin'))
         params.pop('model_dir')
 
-        model = BertOnQA(len(targets), os.path.join(self.model_dir, 'bert-base-uncased'), **params)
+        model = BertOnQA_2(len(targets), self.model_dir, **params)
         model.load_state_dict(torch.load(os.path.join(self.ckpt_dir, f'model_state_dict_fold_{self.fold_n}.pth')))
         model.to(self.device)
 
-        qa_avg_pool = []
-        def extract_avg_poolings(self, input, output):
-            qa_avg_pool.append(output.detach().squeeze().cpu().numpy())
+        qa_poolings = []
+        def extract_poolings(self, input, output):
+            qa_poolings.append(output.detach().squeeze().cpu().numpy())
 
-        h = model.avg_pool.register_forward_hook(extract_avg_poolings)
+        h = model.pooling.register_forward_hook(extract_poolings)
         
         model.eval()
         qa_fc = []
@@ -102,15 +95,44 @@ class MixModelDataset(torch.utils.data.Dataset):
                 outs = model(tokens.to(self.device), attention_mask=(tokens > 0).to(self.device), token_type_ids=token_types.to(self.device))
                 qa_fc.append(outs.detach().cpu().numpy())
         
-        self.qa_fc = np.vstack(qa_fc).astype(np.float32)
-        self.qa_avg_pool = np.vstack(qa_avg_pool).astype(np.float32)
+        qa_fc = np.vstack(qa_fc).astype(np.float32)
+        qa_pool = np.vstack(qa_poolings).astype(np.float32)
 
+        # cleanup
         h.remove()
         del model
         gc.collect()
         torch.cuda.empty_cache()
 
-        # Category data
+        # save to .tmp
+        with open('.tmp/qa_data.pickle', 'wb') as f:
+            pickle.dump((qa_fc, qa_pool), f)
+
+    def _get_data(self):
+        if targets[0] in self.df.columns:
+            self.labels = self.df[targets].values.astype(np.float32)
+        else: 
+            self.labels = None
+
+        # 1. QA data 
+        path_cache_file = os.path.join('.tmp', self.cache_file) if self.cache_file is not None else None
+
+        if self.do_cache and self.cache_file is not None:
+            if os.path.exists(path_cache_file):
+                with open(path_cache_file, 'rb') as f:
+                    self.labels, self.qa_fc, self.qa_pool, self.use_embeds, self.use_dist, self.category = pickle.load(f)
+                return
+
+        # parallel process to make sure GPU memory is released
+        p = Process(target=self._run_qa_data)
+        p.start()
+        p.join() 
+
+        # load from .tmp
+        with open('.tmp/qa_data.pickle', 'rb') as f:
+            self.qa_fc, self.qa_pool = pickle.load(f)
+
+        # 2. Category data
         find = re.compile(r"^[^.]*")
 
         self.df['netloc'] = self.df['url'].apply(lambda x: re.findall(find, urlparse(x).netloc)[0])
@@ -123,19 +145,20 @@ class MixModelDataset(torch.utils.data.Dataset):
         # in case we have some nans replace nan by 0
         self.category[np.isnan(self.category)] = 0 
 
+        # 3. USE data
+        self.use_embeds, self.use_dist = get_use_features(self.df, self.use_dir)
+
         if self.do_cache and self.cache_file is not None:
             with open(path_cache_file, 'wb') as f:
-                pickle.dump((self.labels, self.qa_fc, self.qa_avg_pool, self.category), f)
+                pickle.dump((self.labels, self.qa_fc, self.qa_pool, self.use_embeds, self.use_dist, self.category), f)
 
-        # Features data
-        # TODO
 
     def __len__(self):
         return len(self.df)
 
     def __getitem__(self, idx):
         labels = self.labels[idx] if self.labels is not None else []
-        return self.qa_fc[idx], self.qa_avg_pool[idx], self.category[idx], labels
+        return self.qa_fc[idx], self.qa_pool[idx], self.use_embeds[idx], self.use_dist[idx], self.category[idx], labels
 
 def do_evaluate(model, loader, with_labels=False):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -148,10 +171,12 @@ def do_evaluate(model, loader, with_labels=False):
     loss = 0
     with torch.no_grad():
         for batch_i, batch in enumerate(loader):
-            qa_fc, qa_avg_pool, category, labels = batch
+            qa_fc, qa_pool, use_embed, use_dist, category, labels = batch
             out = model(
                 qa_fc.to(device), 
-                qa_avg_pool.to(device),
+                qa_pool.to(device),
+                use_embed.to(device),
+                use_dist.to(device),
                 category.to(device)
             )
             all_preds.append(torch.sigmoid(out).detach().cpu().numpy())
@@ -215,13 +240,15 @@ def do_training(model, loaders, optimizer, params, do_wandb=False):
             # step
             lr_scheduler.step()
 
-            qa_fc, qa_avg_pool, category, labels = batch
+            qa_fc, qa_pool, use_embed, use_dist, category, labels = batch
 
             bs = qa_fc.shape[0]
 
             outs = model(
                 qa_fc.to(device), 
-                qa_avg_pool.to(device),
+                qa_pool.to(device),
+                use_embed.to(device),
+                use_dist.to(device),
                 category.to(device)
             )
 
@@ -297,38 +324,50 @@ def main(params):
         val_ids = pd.read_csv(os.path.join(p['fold_dir'], f"valid_ids_fold_{fold_n}.csv"))['ids']
 
         #TODO add cache file
-        train_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], train_df.iloc[tr_ids].copy(), fold_n, cache_file=f"mix_train_fold_{fold_n}.pickle", do_cache=p['do_cache'])
-        valid_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], train_df.iloc[val_ids].copy(), fold_n, enc=train_dataset.enc, cache_file=f"mix_valid_fold_{fold_n}.pickle", do_cache=p['do_cache'])
-        test_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], test_df.copy(), fold_n, enc=train_dataset.enc, cache_file=f"mix_test_fold_{fold_n}.pickle", do_cache=p['do_cache'])
+        train_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], p['use_dir'], train_df.iloc[tr_ids].copy(), fold_n, cache_file=f"mix_train_fold_{fold_n}.pickle", do_cache=p['do_cache'])
+        valid_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], p['use_dir'], train_df.iloc[val_ids].copy(), fold_n, enc=train_dataset.enc, cache_file=f"mix_valid_fold_{fold_n}.pickle", do_cache=p['do_cache'])
+        test_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], p['use_dir'], test_df.copy(), fold_n, enc=train_dataset.enc, cache_file=f"mix_test_fold_{fold_n}.pickle", do_cache=p['do_cache'])
 
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=p['bs'], shuffle=True)
         valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=p['bs'], shuffle=False)
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=p['bs'], shuffle=False)            
         loaders = {'train': train_loader, 'valid': valid_loader, 'test': test_loader}
 
-        qa_fc, qa_avg_pool, cat, _ = next(iter(train_loader))
+        def train_loop():
+            global test_preds_per_fold, val_rhos
 
-        model = MixModel(qa_fc.shape[1], qa_avg_pool.shape[1], cat.shape[1])
+            qa_fc, qa_pool, use_embed, use_dist, cat, _ = next(iter(train_loader))
+            model = MixModel(qa_fc.shape[1], qa_pool.shape[1], use_embed.shape[1], use_dist.shape[1], cat.shape[1])
+            optimizer = torch.optim.Adam(model.parameters(), p['lr'])
 
-        optimizer = torch.optim.Adam(model.parameters(), p['lr'])
+            # do training 
+            do_wandb = False if fold_n == 0 else False
+            test_preds, val_rho = do_training(model, loaders, optimizer, params, do_wandb=do_wandb)
 
-        # do training 
-        do_wandb = False if fold_n == 0 else False
-        test_preds, val_rho = do_training(model, loaders, optimizer, params, do_wandb=do_wandb)
+            # dump results
+            with open('.tmp/train_loop.pickle', 'wb') as f:
+                pickle.dump((test_preds, val_rho), f)
+
+            # save model 
+            torch.save(model.state_dict(), os.path.join(p['out_dir'], f"model_state_dict_fold_{fold_n}.pth"))
+            
+            with open(os.path.join(p['out_dir'], f"enc_fold_{fold_n}.pickle"), 'wb') as f:
+                pickle.dump(train_dataset.enc, f)
+
+            # cleanup
+            del model
+            gc.collect()
+            torch.cuda.empty_cache()
+
+        pr = Process(target=train_loop)
+        pr.start()
+        pr.join() 
+                    
+        with open('.tmp/train_loop.pickle', 'rb') as f:
+            test_preds, val_rho = pickle.load(f)
 
         val_rhos.append(val_rho)
         test_preds_per_fold.append(test_preds)
-
-        # save model 
-        torch.save(model.state_dict(), os.path.join(p['out_dir'], f"model_state_dict_fold_{fold_n}.pth"))
-        
-        with open(os.path.join(p['out_dir'], f"enc_fold_{fold_n}.pickle"), 'wb') as f:
-            pickle.dump(train_dataset.enc, f)
-
-        # cleanup
-        del model
-        gc.collect()
-        torch.cuda.empty_cache()
 
     # do submission
 
@@ -359,10 +398,11 @@ def get_default_params():
         'data_dir': 'data',
         'fold_dir': 'data',
         'model_dir': 'model',
+        'use_dir': 'model/universal-sentence-encoder-large-5',
         'ckpt_dir': 'outputs/bert_on_all_1', 
         'sub_type': 1, 
         'do_cache': False, 
-        'out_dir': 'outputs/mix_model'
+        'out_dir': 'outputs/mix_model', 
     }
 
 if __name__ == '__main__':
@@ -374,6 +414,7 @@ if __name__ == '__main__':
     parser.add_argument("--warmup", default=0.5, type=float)
     parser.add_argument("--warmdown", default=0.5, type=float)
     parser.add_argument("--data_dir", default="data", type=str)
+    parser.add_argument("--use_dir", default="model/universal-sentence-encoder-large-5", type=str)
     parser.add_argument("--out_dir", default="outputs/mix_model", type=str)
     parser.add_argument("--fold_dir", default="data", type=str)
     parser.add_argument("--model_dir", default="model", type=str)
