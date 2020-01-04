@@ -38,17 +38,20 @@ def main(**args):
         val_ids = pd.read_csv(os.path.join(args['data_dir'], f"valid_ids_fold_{args['fold']}.csv"))['ids'].values
     else:
         # train on almost all the data
-        tr_ids, val_ids = train_test_split(np.arange(len(train_df)), test_size=0.05, random_state=args['seed'])
+        tr_ids = np.arange(len(train_df))
+        val_ids = None
 
-    # TODO change for bert-base-uncased-qa. ie finetuned LM 
     tokenizer = transformers.BertTokenizer.from_pretrained(args['model_dir'])
 
     train_dataset = DatasetQA(train_df, tokenizer, tr_ids, max_len_q_b=args['max_len_q_b'], max_len_q_t=30)
 
-    valid_dataset = DatasetQA(train_df, tokenizer, val_ids, max_len_q_b=args['max_len_q_b'], max_len_q_t=30)
-
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args['bs'], shuffle=True)
-    valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=args['bs'], shuffle=False)
+
+    valid_loader = None
+    if val_ids is not None:
+        valid_dataset = DatasetQA(train_df, tokenizer, val_ids, max_len_q_b=args['max_len_q_b'], max_len_q_t=30)
+        valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=args['bs'], shuffle=False)
+
     loaders = {'train': train_loader, 'valid': valid_loader}
 
     device = torch.device(args['device'])
