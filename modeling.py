@@ -195,8 +195,6 @@ class BertOnQA_2(nn.Module):
 
         config = transformers.BertConfig.from_pretrained(model_dir)
         config.output_hidden_states=True 
-        #self.bert = transformers.BertModel(config)
-        #self.bert.load_state_dict(torch.load(os.path.join(model_dir, 'pytorch_model.bin')), strict=False)
         self.bert = transformers.BertModel.from_pretrained(model_dir, config=config)
         self.pooling = CustomBertPooling()
 
@@ -224,6 +222,9 @@ class BertOnQA_2(nn.Module):
     def train_head_only(self):
         for param in self.bert.parameters():
             param.requires_grad = False
+
+        for param in self.pooling.parameters():
+            param.requires_grad = True
 
         for param in self.layer_1.parameters():
             param.requires_grad = True
