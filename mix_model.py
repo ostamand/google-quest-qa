@@ -45,13 +45,46 @@ class MixModel(nn.Module):
 
     def __init__(self, qa_fc_size, qa_pool_size, use_embeds_size, use_dist_size, category_size):
         super(MixModel, self).__init__()
-        n_features = qa_fc_size + qa_pool_size + category_size + use_dist_size
-        self.fc_dp = nn.Dropout(0.4)
-        self.fc = nn.Linear(n_features, len(targets))
+        #n_features = qa_fc_size + qa_pool_size + category_size + use_dist_size + use_embeds_size
+        #self.fc_dp = nn.Dropout(0.4)
+        #self.fc = nn.Linear(n_features, len(targets))
+
+        self.layer_use_embeds = nn.Sequential(
+            nn.Dropout(p=0.4, inplace=True),
+            nn.Linear(use_embeds_size + use_dist_size, 512),
+            nn.ReLU(inplace=True)
+        ) 
+
+        self.layer_pool = nn.Sequential(
+            nn.Dropout(p=0.4, inplace=True),
+            nn.Linear(qa_fc_size + qa_pool_size, 512),
+            nn.ReLU(inplace=True)
+        )
+
+        self.layer_cat = nn.Sequential(
+            nn.Dropout(p=0.4, inplace=True),
+            nn.Linear(category_size, category_size),
+            nn.ReLU(inplace=True)
+        )
+
+        self.layer_top = nn.Sequential(
+            nn.Dropout(p=0.2, inplace=True),
+            nn.Linear(category_size + 1024, len(targets))
+        )
 
     def forward(self, qa_fc, qa_pool, use_embed, use_dist, category):
-        x = torch.cat([qa_fc, qa_pool, use_dist, category], dim=1)
-        out = self.fc(self.fc_dp(x))
+        x_embeds = torch.cat([use_embed, use_dist], dim=1)
+        x_embeds = self.layer_use_embeds(x_embeds)
+
+        x_pool = torch.cat([qa_fc, qa_pool], dim=1)
+        x_pool = self.layer_pool(x_pool)
+
+        x_cat = self.layer_cat(category)
+
+        x = torch.cat([x_embeds, x_pool, x_cat], dim=1)
+
+        out = self.layer_top(x)
+
         return out 
 
 class MixModelDataset(torch.utils.data.Dataset):
@@ -334,8 +367,6 @@ def main(params):
         loaders = {'train': train_loader, 'valid': valid_loader, 'test': test_loader}
 
         def train_loop():
-            global test_preds_per_fold, val_rhos
-
             qa_fc, qa_pool, use_embed, use_dist, cat, _ = next(iter(train_loader))
             model = MixModel(qa_fc.shape[1], qa_pool.shape[1], use_embed.shape[1], use_dist.shape[1], cat.shape[1])
             optimizer = torch.optim.Adam(model.parameters(), p['lr'])
@@ -389,7 +420,7 @@ def main(params):
 
 def get_default_params():
     return {
-        'bs': 16,
+        'bs': 32,
         'epochs': 100,
         'lr': 1e-4, 
         'seed': 42,
