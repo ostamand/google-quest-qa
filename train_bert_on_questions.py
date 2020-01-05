@@ -158,7 +158,7 @@ def get_preds(df, ckpt_dir, fold_n, params):
     p.join()
     with open('.tmp/questions_preds.pickle', 'rb') as f:
         preds = pickle.load(f)
-    return open
+    return preds
 
 def _run_get_preds(df, ckpt_dir, fold_n, params):
     tokenizer = transformers.BertTokenizer.from_pretrained(params['model_dir'])
@@ -171,27 +171,27 @@ def _run_get_preds(df, ckpt_dir, fold_n, params):
         torch.tensor(token_types, dtype=torch.long)
     )
 
-    loader = torch.utils.data.DataLoader(train_dataset, batch_size=params['bs'], shuffle=False)
+    loader = torch.utils.data.DataLoader(dataset, batch_size=params['bs'], shuffle=False)
 
     device = torch.device(params['device'])
 
     model = BertOnQA_2(len(targets_for_tr), params['model_dir'], **BertOnQA_2.default_params())
     model.to(device)
     
-    ckpt_path = os.path.join(ckpt_dir, f'') #TODO
+    ckpt_path = os.path.join(ckpt_dir, f'model_state_dict_fold_{fold_n}.pth')
     model.load_state_dict(torch.load(ckpt_path)) 
     model.eval()
-    preds = []
+    all_preds = []
     for batch in loader:
         with torch.no_grad():
             tokens, token_types = batch
-            preds = model(tokens.to(device), attention_mask=(tokens > 0).to(device), token_type_ids=token_types)
-            preds.append(torch.sigmoid(preds).cpu().numpy())
+            preds = model(tokens.to(device), attention_mask=(tokens > 0).to(device), token_type_ids=token_types.to(device))
+            all_preds.append(torch.sigmoid(preds).cpu().numpy())
     
-    preds = np.vstack(preds)
+    all_preds = np.vstack(all_preds)
 
     with open('.tmp/questions_preds.pickle', 'wb') as f:
-        pickle.dump(preds, f)
+        pickle.dump(all_preds, f)
 
 # example: python train_bert_on_questions.py --do_apex --do_wandb --maxlen 256 --bs 8 --dp 0.1 --fold 0 --out_dir test
 # trained model will be saved to model/test_fold_0
