@@ -335,7 +335,7 @@ def do_training(model, loaders, optimizer, params, do_wandb=False):
         early_stopping.restore()
 
     # TODO return average over all epochs
-    return test_preds, np.max(val_rhos)
+    return test_preds, valid_preds, np.max(val_rhos)
 
 def train_loop(train_df, test_df, fold_n, params):
     p = params
@@ -352,18 +352,18 @@ def train_loop(train_df, test_df, fold_n, params):
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=p['bs'], shuffle=False)            
     loaders = {'train': train_loader, 'valid': valid_loader, 'test': test_loader}
 
-
     qa_fc, qa_pool, use_embed, use_dist, cat, _ = next(iter(train_loader))
     model = MixModel(qa_fc.shape[1], qa_pool.shape[1], use_embed.shape[1], use_dist.shape[1], cat.shape[1])
     optimizer = torch.optim.Adam(model.parameters(), p['lr'])
 
     # do training 
     do_wandb = False if fold_n == 0 else False
-    test_preds, val_rho = do_training(model, loaders, optimizer, params, do_wandb=do_wandb)
+    # assume last epoch is best for for valid_preds...
+    test_preds, valid_preds, val_rho = do_training(model, loaders, optimizer, params, do_wandb=do_wandb)
 
     # dump results
     with open('.tmp/train_loop.pickle', 'wb') as f:
-        pickle.dump((test_preds, val_rho), f)
+        pickle.dump((test_preds, valid_preds, val_rho), f)
 
     # save model 
     torch.save(model.state_dict(), os.path.join(p['out_dir'], f"model_state_dict_fold_{fold_n}.pth"))
@@ -388,21 +388,23 @@ def main(params):
     sub_df = pd.read_csv(os.path.join(params['data_dir'], 'sample_submission.csv'))
 
     test_preds_per_fold = []
+    valid_preds_per_fold = []
     val_rhos = []
-
     for fold_n in range(5):
         pr = Process(target=partial(train_loop, train_df, test_df, fold_n, params))
         pr.start()
         pr.join() 
                     
         with open('.tmp/train_loop.pickle', 'rb') as f:
-            test_preds, val_rho = pickle.load(f)
+            test_preds, valid_preds, val_rho = pickle.load(f)
 
         val_rhos.append(val_rho)
         test_preds_per_fold.append(test_preds)
+        valid_preds_per_fold.append(valid_preds)
+
+    #TODO model on questions...
 
     # do submission
-
     print("Printing submission file...")
     if params['sub_type'] == 1:
         test_preds = np.mean(test_preds_per_fold, axis=0)
