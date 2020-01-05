@@ -28,6 +28,8 @@ from datasets import DatasetQA
 
 import pdb
 
+# try: https://github.com/makcedward/nlpaug/blob/master/example/flow.ipynb
+# check: https://www.kaggle.com/christofhenkel/how-to-preprocessing-for-glove-part1-eda
 #@email_sender(recipient_emails=["olivier.st.amand.1@gmail.com"], sender_email="yellow.bhaji@gmail.com")
 def main(**args):
     # data

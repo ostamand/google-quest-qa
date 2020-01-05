@@ -3,6 +3,8 @@ import os
 import gc
 from typing import List
 from functools import partial
+from multiprocessing import Process
+import pickle
 
 import torch
 import torch.nn as nn
@@ -22,8 +24,10 @@ except:
 import pdb
 
 from constants import targets
-from modeling import BertOnQuestions
+from modeling import BertOnQA_2
 from training import Trainer
+
+targets_for_tr = [x for x in targets if x.startswith('question')]
 
 # not used anymore
 def apply_tokenizer(tokenizer, texts: List[str], maxlen) -> np.array:
@@ -68,16 +72,11 @@ def main(**args):
 
     tokenizer = transformers.BertTokenizer.from_pretrained(args['model_dir'])
     
-    targets_for_tr = [x for x in targets if x.startswith('question')]
+    #targets_for_tr = [x for x in targets if x.startswith('question')]
     train_df['all'] = train_df.apply(lambda x: process_for_questions(tokenizer, x), axis=1)
 
     tokens = np.stack(train_df['all'].apply(lambda x: x[0]).values).astype(np.long)
     token_types = np.stack(train_df['all'].apply(lambda x: x[1]).values).astype(np.long)
-
-    """
-    texts = train_df.apply(lambda x: x['question_title'] + ' ' + x['question_body'], axis=1)
-    tokens =  apply_tokenizer(tokenizer, texts, args['maxlen'])
-    """
 
     labels = train_df[targets_for_tr].values.astype(np.float32)
 
@@ -112,9 +111,7 @@ def main(**args):
 
     device = torch.device(args['device'])
 
-    params = BertOnQuestions.default_params()
-    params['fc_dp'] = 0.
-    model = BertOnQuestions(len(targets_for_tr), args['model_dir'], **params)
+    model = BertOnQA_2(len(targets_for_tr), args['model_dir'], **BertOnQA_2.default_params())
     model.to(device)
 
     if args['do_wandb']:
@@ -136,7 +133,6 @@ def main(**args):
 
     # train all layers
 
-    model.fc_dp.p = args['dp']
     model.train_all()
 
     for param_group in optimizer.param_groups:
@@ -157,6 +153,49 @@ def main(**args):
 
     torch.save(args, os.path.join(out_dir, f"training_args{suffix}.bin"))
 
+def get_test_preds(df, ckpt_dir, fold_n, params):
+    p = Process(target=_run_get_test_preds, args=[df, ckpt_dir, fold_n, params])
+    p.start()
+    p.join()
+
+    with open('.tmp/questions_test_preds.pickle', 'rb') as f:
+        test_preds = pickle.load(f)
+
+    return test_preds
+
+def _run_get_test_preds(df, ckpt_dir, fold_n, params):
+    tokenizer = transformers.BertTokenizer.from_pretrained(params['model_dir'])
+    df['all'] = df.apply(lambda x: process_for_questions(tokenizer, x), axis=1)
+    tokens = np.stack(df['all'].apply(lambda x: x[0]).values).astype(np.long)
+    token_types = np.stack(df['all'].apply(lambda x: x[1]).values).astype(np.long)
+
+    dataset = torch.utils.data.TensorDataset(
+        torch.tensor(tokens, dtype=torch.long), 
+        torch.tensor(token_types, dtype=torch.long)
+    )
+
+    loader = torch.utils.data.DataLoader(train_dataset, batch_size=params['bs'], shuffle=False)
+
+    device = torch.device(params['device'])
+
+    model = BertOnQA_2(len(targets_for_tr), params['model_dir'], **BertOnQA_2.default_params())
+    model.to(device)
+    
+    ckpt_path = os.path.join(ckpt_dir, f'') #TODO
+    model.load_state_dict(torch.load(ckpt_path)) 
+    model.eval()
+    test_preds = []
+    for batch in loader:
+        with torch.no_grad():
+            tokens, token_types = batch
+            preds = model(tokens.to(device), attention_mask=(tokens > 0).to(device), token_type_ids=token_types)
+            test_preds.append(torch.sigmoid(preds).cpu().numpy())
+    
+    test_preds = np.vstack(test_preds)
+
+    with open('.tmp/questions_test_preds.pickle', 'wb') as f:
+        pickle.dump(test_preds, f)
+
 # example: python train_bert_on_questions.py --do_apex --do_wandb --maxlen 256 --bs 8 --dp 0.1 --fold 0 --out_dir test
 # trained model will be saved to model/test_fold_0
 # python train_bert_on_questions.py --do_apex --do_wandb --maxlen 256 --bs 8 --dp 0.1 --out_dir test
@@ -174,7 +213,7 @@ if __name__ == '__main__':
     parser.add_argument("--seed", default=42, type=int)
     parser.add_argument("--bs", default=8, type=int)
     parser.add_argument("--dp", default=0.4, type=float)
-    parser.add_argument("--maxlen", default=256, type=int)
+    parser.add_argument("--maxlen", default=512, type=int)
     parser.add_argument("--device", default="cuda", type=str)
     parser.add_argument("--do_apex", action='store_true')
     parser.add_argument("--do_wandb", action='store_true')

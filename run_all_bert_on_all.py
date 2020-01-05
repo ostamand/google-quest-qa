@@ -9,7 +9,7 @@ from train_bert_on_all import main as run_train
 
 def main():
     params = {
-        'seed': 42,
+        'seed': 1,
         'do_apex': True,
         'do_wandb': True,
         'do_tb': False,
@@ -18,7 +18,7 @@ def main():
         'accumulation_step': 2,
         'epochs': 5,
         'lr': 2e-5, 
-        'out_dir': 'outputs/bert_on_all_lm',
+        'out_dir': 'outputs/bert_on_all_lm_3',
         'dp': 0.,
         'bert_wd': 0.01,
         'max_len_q_b': 150, 
