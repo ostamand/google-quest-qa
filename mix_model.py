@@ -259,6 +259,8 @@ def do_training(model, loaders, optimizer, params, do_wandb=False):
     all_valid_preds = []
     all_test_preds = []
     val_rhos = []
+    best_valid_preds = None
+    best_rho_val = -np.inf
     for epoch_i in range(p['epochs']):
         model.train()
 
@@ -313,6 +315,10 @@ def do_training(model, loaders, optimizer, params, do_wandb=False):
             rho_val = compute_spearmanr(labels, valid_preds)
             #rho_val_mean = compute_spearmanr(labels, np.mean(all_valid_preds,axis=0))
 
+            if rho_val > best_rho_val:
+                best_rho_val = rho_val
+                best_valid_preds = valid_preds
+
             scheduler.step(rho_val)
             early_stopping.step(rho_val)
 
@@ -335,7 +341,7 @@ def do_training(model, loaders, optimizer, params, do_wandb=False):
         early_stopping.restore()
 
     # TODO return average over all epochs
-    return test_preds, valid_preds, np.max(val_rhos)
+    return test_preds, best_valid_preds, np.max(val_rhos)
 
 def train_loop(train_df, test_df, fold_n, params):
     p = params
@@ -408,7 +414,7 @@ def main(params):
 
 
 
-    #TODO check score
+    #TODO check combine val rho
     #labels = df[targets].values.astype(np.float32)
 
     # do submission
@@ -422,7 +428,6 @@ def main(params):
 
     sub_df.iloc[:, 1:] = test_preds
     sub_df.to_csv('submission.csv', index=False)
-
 
     return test_preds, val_rhos
 

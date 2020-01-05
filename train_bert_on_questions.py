@@ -152,17 +152,15 @@ def main(**args):
 
     torch.save(args, os.path.join(out_dir, f"training_args{suffix}.bin"))
 
-def get_test_preds(df, ckpt_dir, fold_n, params):
-    p = Process(target=_run_get_test_preds, args=[df, ckpt_dir, fold_n, params])
+def get_preds(df, ckpt_dir, fold_n, params):
+    p = Process(target=_run_get_preds, args=[df, ckpt_dir, fold_n, params])
     p.start()
     p.join()
+    with open('.tmp/questions_preds.pickle', 'rb') as f:
+        preds = pickle.load(f)
+    return open
 
-    with open('.tmp/questions_test_preds.pickle', 'rb') as f:
-        test_preds = pickle.load(f)
-
-    return test_preds
-
-def _run_get_test_preds(df, ckpt_dir, fold_n, params):
+def _run_get_preds(df, ckpt_dir, fold_n, params):
     tokenizer = transformers.BertTokenizer.from_pretrained(params['model_dir'])
     df['all'] = df.apply(lambda x: process_for_questions(tokenizer, x), axis=1)
     tokens = np.stack(df['all'].apply(lambda x: x[0]).values).astype(np.long)
@@ -183,17 +181,17 @@ def _run_get_test_preds(df, ckpt_dir, fold_n, params):
     ckpt_path = os.path.join(ckpt_dir, f'') #TODO
     model.load_state_dict(torch.load(ckpt_path)) 
     model.eval()
-    test_preds = []
+    preds = []
     for batch in loader:
         with torch.no_grad():
             tokens, token_types = batch
             preds = model(tokens.to(device), attention_mask=(tokens > 0).to(device), token_type_ids=token_types)
-            test_preds.append(torch.sigmoid(preds).cpu().numpy())
+            preds.append(torch.sigmoid(preds).cpu().numpy())
     
-    test_preds = np.vstack(test_preds)
+    preds = np.vstack(preds)
 
-    with open('.tmp/questions_test_preds.pickle', 'wb') as f:
-        pickle.dump(test_preds, f)
+    with open('.tmp/questions_preds.pickle', 'wb') as f:
+        pickle.dump(preds, f)
 
 # example: python train_bert_on_questions.py --do_apex --do_wandb --maxlen 256 --bs 8 --dp 0.1 --fold 0 --out_dir test
 # trained model will be saved to model/test_fold_0
