@@ -337,6 +337,45 @@ def do_training(model, loaders, optimizer, params, do_wandb=False):
     # TODO return average over all epochs
     return test_preds, np.max(val_rhos)
 
+def train_loop(train_df, test_df, fold_n, params):
+    p = params
+
+    tr_ids = pd.read_csv(os.path.join(p['fold_dir'],  f"train_ids_fold_{fold_n}.csv"))['ids'] # TODO remove for dev
+    val_ids = pd.read_csv(os.path.join(p['fold_dir'], f"valid_ids_fold_{fold_n}.csv"))['ids']
+
+    train_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], p['use_dir'], train_df.iloc[tr_ids].copy(), fold_n, cache_file=f"mix_train_fold_{fold_n}.pickle", do_cache=p['do_cache'])
+    valid_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], p['use_dir'], train_df.iloc[val_ids].copy(), fold_n, enc=train_dataset.enc, cache_file=f"mix_valid_fold_{fold_n}.pickle", do_cache=p['do_cache'])
+    test_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], p['use_dir'], test_df.copy(), fold_n, enc=train_dataset.enc, cache_file=f"mix_test_fold_{fold_n}.pickle", do_cache=p['do_cache'])
+
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=p['bs'], shuffle=True)
+    valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=p['bs'], shuffle=False)
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=p['bs'], shuffle=False)            
+    loaders = {'train': train_loader, 'valid': valid_loader, 'test': test_loader}
+
+
+    qa_fc, qa_pool, use_embed, use_dist, cat, _ = next(iter(train_loader))
+    model = MixModel(qa_fc.shape[1], qa_pool.shape[1], use_embed.shape[1], use_dist.shape[1], cat.shape[1])
+    optimizer = torch.optim.Adam(model.parameters(), p['lr'])
+
+    # do training 
+    do_wandb = False if fold_n == 0 else False
+    test_preds, val_rho = do_training(model, loaders, optimizer, params, do_wandb=do_wandb)
+
+    # dump results
+    with open('.tmp/train_loop.pickle', 'wb') as f:
+        pickle.dump((test_preds, val_rho), f)
+
+    # save model 
+    torch.save(model.state_dict(), os.path.join(p['out_dir'], f"model_state_dict_fold_{fold_n}.pth"))
+            
+    with open(os.path.join(p['out_dir'], f"enc_fold_{fold_n}.pickle"), 'wb') as f:
+        pickle.dump(train_dataset.enc, f)
+
+    # cleanup
+    del model
+    gc.collect()
+    torch.cuda.empty_cache()
+
 def main(params):
     p = params 
 
@@ -352,43 +391,7 @@ def main(params):
     val_rhos = []
 
     for fold_n in range(5):
-        tr_ids = pd.read_csv(os.path.join(p['fold_dir'],  f"train_ids_fold_{fold_n}.csv"))['ids'] # TODO remove for dev
-        val_ids = pd.read_csv(os.path.join(p['fold_dir'], f"valid_ids_fold_{fold_n}.csv"))['ids']
-
-        train_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], p['use_dir'], train_df.iloc[tr_ids].copy(), fold_n, cache_file=f"mix_train_fold_{fold_n}.pickle", do_cache=p['do_cache'])
-        valid_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], p['use_dir'], train_df.iloc[val_ids].copy(), fold_n, enc=train_dataset.enc, cache_file=f"mix_valid_fold_{fold_n}.pickle", do_cache=p['do_cache'])
-        test_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], p['use_dir'], test_df.copy(), fold_n, enc=train_dataset.enc, cache_file=f"mix_test_fold_{fold_n}.pickle", do_cache=p['do_cache'])
-
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=p['bs'], shuffle=True)
-        valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=p['bs'], shuffle=False)
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=p['bs'], shuffle=False)            
-        loaders = {'train': train_loader, 'valid': valid_loader, 'test': test_loader}
-
-        def train_loop():
-            qa_fc, qa_pool, use_embed, use_dist, cat, _ = next(iter(train_loader))
-            model = MixModel(qa_fc.shape[1], qa_pool.shape[1], use_embed.shape[1], use_dist.shape[1], cat.shape[1])
-            optimizer = torch.optim.Adam(model.parameters(), p['lr'])
-
-            # do training 
-            do_wandb = False if fold_n == 0 else False
-            test_preds, val_rho = do_training(model, loaders, optimizer, params, do_wandb=do_wandb)
-
-            # dump results
-            with open('.tmp/train_loop.pickle', 'wb') as f:
-                pickle.dump((test_preds, val_rho), f)
-
-            # save model 
-            torch.save(model.state_dict(), os.path.join(p['out_dir'], f"model_state_dict_fold_{fold_n}.pth"))
-            
-            with open(os.path.join(p['out_dir'], f"enc_fold_{fold_n}.pickle"), 'wb') as f:
-                pickle.dump(train_dataset.enc, f)
-
-            # cleanup
-            del model
-            gc.collect()
-            torch.cuda.empty_cache()
-
-        pr = Process(target=train_loop)
+        pr = Process(target=partial(train_loop, train_df, test_df, fold_n, params))
         pr.start()
         pr.join() 
                     
