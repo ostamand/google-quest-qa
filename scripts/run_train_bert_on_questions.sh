@@ -1,14 +1,9 @@
 (cd ..; python3 train_bert_on_questions.py \
         --do_apex \
         --do_wandb \
-        --maxlen 512 \
-        --clip 10 \
         --bs 4 \
         --accumulation_steps 2 \
-        --dp 0.1 \
-        --lr1 1e-2 \
         --lr2 2e-5 \
-        --do_head \
         --fold 0 \
         --model_dir outputs/lm_finetuning_all \
-        --out_dir outputs/bert_on_questions )
+        --out_dir outputs/bert_on_questions_1 )
