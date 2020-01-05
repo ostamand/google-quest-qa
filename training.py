@@ -48,6 +48,7 @@ class Trainer():
     
     def train(self, model, loaders, optimizer, params=None, **kwargs):
         rho_vals = []
+        valid_preds = []
 
         self._setup_params(**kwargs)
         p = self.params
@@ -146,19 +147,23 @@ class Trainer():
                 
             # evaluate 
             if valid_loader is not None:
-                metrics = self.evaluate(model, valid_loader)
+                loss, y_true, y_pred = self.evaluate(model, valid_loader)
+                valid_preds.append(y_pred)
+
+                rho_epoch = compute_spearmanr(y_true, y_pred)
+                rho_all = compute_spearmanr(y_true, np.mean(valid_preds, axis=0))
                 
-                scheduler.step(metrics['spearmanr'])
-                early_stopping.step(metrics['spearmanr'])
+                scheduler.step(rho_epoch)
+                early_stopping.step(rho_epoch)
 
                 logs = {'step': it}
-                logs['loss/valid'] = metrics['loss']
-                logs['spearmanr/valid'] = metrics['spearmanr']
+                logs['loss/valid'] = loss
+                logs['spearmanr/valid'] = rho_epoch
                 logger.add_scalars(logs)
 
                 rho_vals.append(logs['spearmanr/valid'])
                 
-                print(f"rho: {metrics['spearmanr']:.4f} (val), loss: {metrics['loss']:.4f} (val)")
+                print(f"rho: {rho_epoch:.4f} (val), rho_all: {rho_all:.4f} (val), loss: {loss:.4f} (val)")
         
         if valid_loader:
             early_stopping.restore()
@@ -191,10 +196,11 @@ class Trainer():
 
         y_pred = np.vstack(y_pred)
         y_true = np.vstack(y_true)
-        rho = compute_spearmanr(y_true, y_pred)
-        logs = {'loss': loss / y_pred.shape[0], 'spearmanr': rho}
         model.train()
-        return logs
+        #rho = compute_spearmanr(y_true, y_pred)
+        #logs = {'loss':, 'spearmanr': rho}
+        
+        return loss / y_pred.shape[0], y_true, y_pred
         
     @classmethod
     def default_params(cls):
