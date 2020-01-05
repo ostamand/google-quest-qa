@@ -394,15 +394,22 @@ def main(params):
         pr = Process(target=partial(train_loop, train_df, test_df, fold_n, params))
         pr.start()
         pr.join() 
-                    
         with open('.tmp/train_loop.pickle', 'rb') as f:
             test_preds, valid_preds, val_rho = pickle.load(f)
-
         val_rhos.append(val_rho)
         test_preds_per_fold.append(test_preds)
         valid_preds_per_fold.append(valid_preds)
 
+    print("Mixed model")
+    print(val_rhos)
+    print(f"rho val: {np.mean(val_rhos):.4f} += {np.std(val_rhos):.4f}")
+
     #TODO model on questions...
+
+
+
+    #TODO check score
+    #labels = df[targets].values.astype(np.float32)
 
     # do submission
     print("Printing submission file...")
@@ -416,8 +423,6 @@ def main(params):
     sub_df.iloc[:, 1:] = test_preds
     sub_df.to_csv('submission.csv', index=False)
 
-    print(val_rhos)
-    print(f"rho val: {np.mean(val_rhos):.4f} += {np.std(val_rhos):.4f}")
 
     return test_preds, val_rhos
 
