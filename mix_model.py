@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 import os 
 import pickle
 from multiprocessing import Process, Manager
+from functools import partial
 
 import pandas as pd
 import numpy as np
@@ -87,6 +88,45 @@ class MixModel(nn.Module):
 
         return out 
 
+def run_qa_data(df, model_dir, ckpt_dir, fold_n):
+    tokenizer = transformers.BertTokenizer.from_pretrained(model_dir)
+    dataset = DatasetQA(df, tokenizer, max_len_q_b=150, max_len_q_t=30)
+    loader = torch.utils.data.DataLoader(dataset, batch_size=4, shuffle=False)
+    params = torch.load(os.path.join(ckpt_dir, f'training_args_fold_{fold_n}.bin'))
+    params.pop('model_dir')
+
+    device = torch.device('cuda')
+    model = BertOnQA_2(len(targets), model_dir, **params)
+    model.load_state_dict(torch.load(os.path.join(ckpt_dir, f'model_state_dict_fold_{fold_n}.pth')))
+    model.to(device)
+
+    qa_poolings = []
+    def extract_poolings(self, input, output):
+        qa_poolings.append(output.detach().squeeze().cpu().numpy())
+
+    h = model.pooling.register_forward_hook(extract_poolings)
+        
+    model.eval()
+    qa_fc = []
+    for batch in tqdm(loader, total=len(loader)):
+        tokens, token_types, _ = batch
+        with torch.no_grad():
+            outs = model(tokens.to(device), attention_mask=(tokens > 0).to(device), token_type_ids=token_types.to(device))
+            qa_fc.append(outs.detach().cpu().numpy())
+        
+    qa_fc = np.vstack(qa_fc).astype(np.float32)
+    qa_pool = np.vstack(qa_poolings).astype(np.float32)
+
+    # cleanup
+    h.remove()
+    del model
+    gc.collect()
+    torch.cuda.empty_cache()
+
+    # save to .tmp
+    with open('.tmp/qa_data.pickle', 'wb') as f:
+         pickle.dump((qa_fc, qa_pool), f)
+
 class MixModelDataset(torch.utils.data.Dataset):
 
     def __init__(self, model_dir, ckpt_dir, use_dir, df, fold_n, enc=None, cache_file=None, do_cache=False, device='cuda'):
@@ -100,46 +140,6 @@ class MixModelDataset(torch.utils.data.Dataset):
         self.device = torch.device(device)
 
         self._get_data()
-
-    def _run_qa_data(self):
-        tokenizer = transformers.BertTokenizer.from_pretrained(self.model_dir)
-        dataset = DatasetQA(self.df, tokenizer, max_len_q_b=150, max_len_q_t=30)
-
-        loader = torch.utils.data.DataLoader(dataset, batch_size=4, shuffle=False)
-
-        params = torch.load(os.path.join(self.ckpt_dir, f'training_args_fold_{self.fold_n}.bin'))
-        params.pop('model_dir')
-
-        model = BertOnQA_2(len(targets), self.model_dir, **params)
-        model.load_state_dict(torch.load(os.path.join(self.ckpt_dir, f'model_state_dict_fold_{self.fold_n}.pth')))
-        model.to(self.device)
-
-        qa_poolings = []
-        def extract_poolings(self, input, output):
-            qa_poolings.append(output.detach().squeeze().cpu().numpy())
-
-        h = model.pooling.register_forward_hook(extract_poolings)
-        
-        model.eval()
-        qa_fc = []
-        for batch in tqdm(loader, total=len(loader)):
-            tokens, token_types, _ = batch
-            with torch.no_grad():
-                outs = model(tokens.to(self.device), attention_mask=(tokens > 0).to(self.device), token_type_ids=token_types.to(self.device))
-                qa_fc.append(outs.detach().cpu().numpy())
-        
-        qa_fc = np.vstack(qa_fc).astype(np.float32)
-        qa_pool = np.vstack(qa_poolings).astype(np.float32)
-
-        # cleanup
-        h.remove()
-        del model
-        gc.collect()
-        torch.cuda.empty_cache()
-
-        # save to .tmp
-        with open('.tmp/qa_data.pickle', 'wb') as f:
-            pickle.dump((qa_fc, qa_pool), f)
 
     def _get_data(self):
         if targets[0] in self.df.columns:
@@ -157,7 +157,7 @@ class MixModelDataset(torch.utils.data.Dataset):
                 return
 
         # parallel process to make sure GPU memory is released
-        p = Process(target=self._run_qa_data)
+        p = Process(target=partial(run_qa_data, self.df, self.model_dir, self.ckpt_dir, self.fold_n))
         p.start()
         p.join() 
 
@@ -184,7 +184,6 @@ class MixModelDataset(torch.utils.data.Dataset):
         if self.do_cache and self.cache_file is not None:
             with open(path_cache_file, 'wb') as f:
                 pickle.dump((self.labels, self.qa_fc, self.qa_pool, self.use_embeds, self.use_dist, self.category), f)
-
 
     def __len__(self):
         return len(self.df)
@@ -356,7 +355,6 @@ def main(params):
         tr_ids = pd.read_csv(os.path.join(p['fold_dir'],  f"train_ids_fold_{fold_n}.csv"))['ids'] # TODO remove for dev
         val_ids = pd.read_csv(os.path.join(p['fold_dir'], f"valid_ids_fold_{fold_n}.csv"))['ids']
 
-        #TODO add cache file
         train_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], p['use_dir'], train_df.iloc[tr_ids].copy(), fold_n, cache_file=f"mix_train_fold_{fold_n}.pickle", do_cache=p['do_cache'])
         valid_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], p['use_dir'], train_df.iloc[val_ids].copy(), fold_n, enc=train_dataset.enc, cache_file=f"mix_valid_fold_{fold_n}.pickle", do_cache=p['do_cache'])
         test_dataset = MixModelDataset(p['model_dir'], p['ckpt_dir'], p['use_dir'], test_df.copy(), fold_n, enc=train_dataset.enc, cache_file=f"mix_test_fold_{fold_n}.pickle", do_cache=p['do_cache'])
