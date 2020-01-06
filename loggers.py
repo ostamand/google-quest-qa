@@ -1,7 +1,11 @@
 import os
 from datetime import datetime
 
-import wandb
+try:
+    import wandb
+except:
+    pass
+
 from torch.utils.tensorboard import SummaryWriter
 
 class MultiLogger():

@@ -2,7 +2,11 @@ import tensorflow as tf
 import tensorflow.keras.backend as K
 import numpy as np
 from scipy.stats import spearmanr
-import wandb
+
+try:
+    import wandb
+except:
+    pass
 
 # taken from: https://www.kaggle.com/akensert/bert-base-tf2-0-minimalistic
 def compute_spearmanr(trues, preds):
