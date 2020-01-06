@@ -367,7 +367,9 @@ def train_loop(train_df, test_df, fold_n, params):
         torch.save(model.state_dict(), ckpt_path)
     else:
         # TODO load checkpoint
+        device = torch.device(p['device'])
         model.load_state_dict(torch.load(ckpt_path))
+        model.to(device)
         model.eval()
         valid_preds, (labels, loss_val) = do_evaluate(model, loaders['valid'], with_labels=True)
         val_rho = compute_spearmanr(labels, valid_preds)
@@ -438,8 +440,6 @@ def main(params):
     print("Mixed model + Questions")
     print(val_questions_rhos)
     print(f"rho val: {np.mean(val_questions_rhos):.4f} += {np.std(val_questions_rhos):.4f}")
-
-    pdb.set_trace()
 
     n_questions = test_questions_preds_per_fold[0].shape[1]
     test_preds = np.mean(test_preds_per_fold, axis=0)
