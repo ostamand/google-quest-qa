@@ -5,7 +5,11 @@ import torch
 import torch.nn as nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
-from apex import amp
+
+try:
+    from apex import amp
+except:
+    pass
 
 from helpers_torch import set_seed
 from helpers import compute_spearmanr, EarlyStoppingSimple

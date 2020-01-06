@@ -12,7 +12,11 @@ import transformers
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from apex import amp
+
+try:
+    from apex import amp
+except:
+    pass
 
 try:
     import wandb
