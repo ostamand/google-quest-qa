@@ -363,18 +363,28 @@ def train_loop(train_df, test_df, fold_n, params):
     model = MixModel(qa_fc.shape[1], qa_pool.shape[1], use_embed.shape[1], use_dist.shape[1], cat.shape[1])
     optimizer = torch.optim.Adam(model.parameters(), p['lr'])
 
-    # do training 
-    do_wandb = False if fold_n == 0 else False
-    # assume last epoch is best for for valid_preds...
-    test_preds, valid_preds, val_rho = do_training(model, loaders, optimizer, params, do_wandb=do_wandb)
+    ckpt_path = os.path.join(p['out_dir'], f"model_state_dict_fold_{fold_n}.pth")
+
+    to_run_train = False if p['ckpt_mixed_dir'] is not None and os.path.exists(ckpt_path) else False
+
+    # do training if needed
+    if to_run_train:
+        do_wandb = False if fold_n == 0 else False
+        test_preds, valid_preds, val_rho = do_training(model, loaders, optimizer, params, do_wandb=do_wandb)
+        # save model 
+        torch.save(model.state_dict(), ckpt_path)
+    else:
+        # TODO load checkpoint
+        model.load_state_dict(torch.load(ckpt_path))
+        model.eval()
+        valid_preds, (labels, loss_val) = do_evaluate(model, loaders['valid'], with_labels=True)
+        val_rho = compute_spearmanr(labels, valid_preds)
+        test_preds = do_evaluate(model, loaders['test'], with_labels=False)
 
     # dump results
     with open('.tmp/train_loop.pickle', 'wb') as f:
         pickle.dump((test_preds, valid_preds, val_rho), f)
 
-    # save model 
-    torch.save(model.state_dict(), os.path.join(p['out_dir'], f"model_state_dict_fold_{fold_n}.pth"))
-            
     with open(os.path.join(p['out_dir'], f"enc_fold_{fold_n}.pickle"), 'wb') as f:
         pickle.dump(train_dataset.enc, f)
 
@@ -382,6 +392,9 @@ def train_loop(train_df, test_df, fold_n, params):
     del model
     gc.collect()
     torch.cuda.empty_cache()
+
+def eval_loop(train_df, test_df, fold_n, params):
+    valid_preds, (labels, loss_val) = do_evaluate(model, loaders['valid'], with_labels=True)
 
 def main(params):
     p = params 
@@ -397,7 +410,6 @@ def main(params):
     test_preds_per_fold = []
     valid_preds_per_fold = []
     val_rhos = []
-    
     for fold_n in range(5):
         pr = Process(target=partial(train_loop, train_df, test_df, fold_n, params))
         pr.start()
@@ -471,9 +483,10 @@ def get_default_params():
         'use_dir': 'model/universal-sentence-encoder-large-5',
         'ckpt_questions_dir': 'outputs/bert_on_questions_1',
         'ckpt_dir': 'outputs/bert_on_all_1', 
+        'ckpt_mixed_dir': 'outputs/mix_model_2',
         'sub_type': 1, 
         'do_cache': False, 
-        'out_dir': 'outputs/mix_model', 
+        'out_dir': 'outputs/mix_model_2', 
         'device': 'cuda'
     }
 
@@ -487,11 +500,12 @@ if __name__ == '__main__':
     parser.add_argument("--warmdown", default=0.5, type=float)
     parser.add_argument("--data_dir", default="data", type=str)
     parser.add_argument("--use_dir", default="model/universal-sentence-encoder-large-5", type=str)
-    parser.add_argument("--out_dir", default="outputs/mix_model", type=str)
+    parser.add_argument("--out_dir", default="outputs/mix_model_2", type=str)
     parser.add_argument("--fold_dir", default="data", type=str)
     parser.add_argument("--model_dir", default="model", type=str)
     parser.add_argument("--ckpt_dir", default="outputs/bert_on_all_1", type=str)
     parser.add_argument("--ckpt_questions_dir", default="outputs/bert_on_questions_1", type=str)
+    parser.add_argument("--ckpt_mixed_dir", default='outputs/mix_model_2', type=str)
     parser.add_argument("--sub_type", default=1, type=int)
     parser.add_argument("--do_cache", action='store_true')
     parser.add_argument("--device", default="cuda", type=str)
