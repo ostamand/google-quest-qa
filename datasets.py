@@ -5,12 +5,18 @@ import pandas as pd
 import numpy as np
 from torch.utils.data import Dataset
 from constants import targets
+from sentence_encodings import get_use_features
 
 class DatasetQA(Dataset):
 
     # TODO variable maxlen. for now fixed at 512
-    def __init__(self, df, tokenizer, ids=None, max_len_q_b=150, max_len_q_t=30):
+    def __init__(self, df, tokenizer, ids=None, max_len_q_b=150, max_len_q_t=30, use_dir=None):
         super(DatasetQA, self).__init__()
+        #self.do_use = True if use_dir is not None else False
+
+        #TODO don't call on all if ids provided...
+
+        # aug = naw.ContextualWordEmbsAug(model_path='bert-base-uncased', action="substitute")
 
         #df = df.iloc[:10] # for dev
         
@@ -205,9 +211,17 @@ class DatasetQA(Dataset):
         self.tokens = np.stack(df['all'].apply(lambda x: x[0]).values).astype(np.long)
         self.token_types = np.stack(df['all'].apply(lambda x: x[1]).values).astype(np.long)
 
+        
+        #if self.do_use:
+        #    self.use_embeds, self.use_dist = get_use_features(df, use_dir)
+            
         if ids is not None:
             if self.labels is not None:
                 self.labels = self.labels[ids]
+
+            #if self.do_use is not None:
+            #    self.use_embeds = self.use_embeds[ids]
+            #    self.use_dist = self.use_dist[ids]
 
             self.tokens = self.tokens[ids]
             self.token_types = self.token_types[ids]

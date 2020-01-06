@@ -4,6 +4,6 @@
         --bs 4 \
         --accumulation_steps 2 \
         --lr2 2e-5 \
-        --fold 0 \
+        --fold 4 \
         --model_dir outputs/lm_finetuning_all \
         --out_dir outputs/bert_on_questions_1 )
