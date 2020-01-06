@@ -35,14 +35,6 @@ except:
 
 import pdb
 
-"""
-Requirements:
-
-model/bert-base-uncased
-outputs/bert_on_all
-.tmp
-"""
-
 class MixModel(nn.Module):
 
     def __init__(self, qa_fc_size, qa_pool_size, use_embeds_size, use_dist_size, category_size):
@@ -393,9 +385,6 @@ def train_loop(train_df, test_df, fold_n, params):
     gc.collect()
     torch.cuda.empty_cache()
 
-def eval_loop(train_df, test_df, fold_n, params):
-    valid_preds, (labels, loss_val) = do_evaluate(model, loaders['valid'], with_labels=True)
-
 def main(params):
     p = params 
 
@@ -499,7 +488,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--bs", default=16, type=int)
     parser.add_argument("--epochs", default=100, type=int)
-    parser.add_argument("--lr", default=1e-4, type=float) # 1e-4
+    parser.add_argument("--lr", default=1e-4, type=float)
     parser.add_argument("--seed", default=42, type=int)
     parser.add_argument("--warmup", default=0.5, type=float)
     parser.add_argument("--warmdown", default=0.5, type=float)
@@ -518,13 +507,3 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     main(args.__dict__)
-
-
-
-
-
-
-
-
-
-
