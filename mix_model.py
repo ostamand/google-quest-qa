@@ -451,23 +451,28 @@ def main(params):
     print(f"rho val: {np.mean(val_questions_rhos):.4f} += {np.std(val_questions_rhos):.4f}")
 
     pdb.set_trace()
+
     n_questions = test_questions_preds_per_fold[0].shape[1]
     test_preds = np.mean(test_preds_per_fold, axis=0)
     test_preds[:, :n_questions] = (test_preds[:, :n_questions] + np.mean(test_questions_preds_per_fold, axis=0)) / 2
 
     # do submission
     print("Printing submission file...")
+
+    # TODO update with submission type #2? 
+    """
     if params['sub_type'] == 1:
         test_preds = np.mean(test_preds_per_fold, axis=0)
     elif params['sub_type'] == 2:
         test_preds = np.array([np.array([rankdata(c) for c in p.T]).T for p in test_preds_per_fold]).mean(axis=0)
         max_val = test_preds.max() + 1
         test_preds = test_preds/max_val + 1e-12
+    """
 
     sub_df.iloc[:, 1:] = test_preds
     sub_df.to_csv('submission.csv', index=False)
 
-    return test_preds, val_rhos
+    return test_preds, val_questions_rhos
 
 def get_default_params():
     return {
@@ -483,10 +488,10 @@ def get_default_params():
         'use_dir': 'model/universal-sentence-encoder-large-5',
         'ckpt_questions_dir': 'outputs/bert_on_questions_1',
         'ckpt_dir': 'outputs/bert_on_all_1', 
-        'ckpt_mixed_dir': 'outputs/mix_model_2',
+        'ckpt_mixed_dir': 'outputs/mix_model_3',
         'sub_type': 1, 
         'do_cache': False, 
-        'out_dir': 'outputs/mix_model_2', 
+        'out_dir': 'outputs/mix_model_3', 
         'device': 'cuda'
     }
 
@@ -505,7 +510,7 @@ if __name__ == '__main__':
     parser.add_argument("--model_dir", default="model", type=str)
     parser.add_argument("--ckpt_dir", default="outputs/bert_on_all_1", type=str)
     parser.add_argument("--ckpt_questions_dir", default="outputs/bert_on_questions_1", type=str)
-    parser.add_argument("--ckpt_mixed_dir", default='outputs/mix_model_2', type=str)
+    parser.add_argument("--ckpt_mixed_dir", default='outputs/mix_model_3', type=str)
     parser.add_argument("--sub_type", default=1, type=int)
     parser.add_argument("--do_cache", action='store_true')
     parser.add_argument("--device", default="cuda", type=str)
