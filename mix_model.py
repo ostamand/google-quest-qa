@@ -26,6 +26,7 @@ from helpers_torch import set_seed
 from helpers import compute_spearmanr, EarlyStoppingSimple
 from schedulers import LearningRateWithUpDown
 from sentence_encodings import get_use_features
+from train_bert_on_questions import get_preds
 
 try: 
     import wandb
@@ -396,6 +397,7 @@ def main(params):
     test_preds_per_fold = []
     valid_preds_per_fold = []
     val_rhos = []
+    
     for fold_n in range(5):
         pr = Process(target=partial(train_loop, train_df, test_df, fold_n, params))
         pr.start()
@@ -410,12 +412,36 @@ def main(params):
     print(val_rhos)
     print(f"rho val: {np.mean(val_rhos):.4f} += {np.std(val_rhos):.4f}")
 
-    #TODO model on questions...
+    #for now average preds with mixed model for submission
+    test_questions_preds_per_fold = []
+    valid_questions_preds_per_fold = []
+    val_questions_rhos = []
+    for fold_n in range(5):
+        test_questions_preds = get_preds(test_df, params['ckpt_questions_dir'], fold_n, params)
+        val_ids = pd.read_csv(os.path.join(params['fold_dir'], f"valid_ids_fold_{fold_n}.csv"))['ids']
+        valid_questions_preds = get_preds(train_df.iloc[val_ids].copy(), params['ckpt_questions_dir'], fold_n, params)
 
+        test_questions_preds_per_fold.append(test_questions_preds)
+        valid_questions_preds_per_fold.append(valid_questions_preds)
 
+        # check combined val rho
+        labels = train_df.iloc[val_ids][targets].values.astype(np.float32)
+        n_questions = valid_questions_preds.shape[1]
 
-    #TODO check combine val rho
-    #labels = df[targets].values.astype(np.float32)
+        valid_preds = valid_preds_per_fold[fold_n]
+        valid_preds[:, :n_questions] = (valid_preds[:, :n_questions] + valid_questions_preds) / 2
+
+        rho_val = compute_spearmanr(labels, valid_preds)
+        val_questions_rhos.append(rho_val)
+
+    print("Mixed model + Questions")
+    print(val_questions_rhos)
+    print(f"rho val: {np.mean(val_questions_rhos):.4f} += {np.std(val_questions_rhos):.4f}")
+
+    pdb.set_trace()
+    n_questions = test_questions_preds_per_fold[0].shape[1]
+    test_preds = np.mean(test_preds_per_fold, axis=0)
+    test_preds[:, :n_questions] = (test_preds[:, :n_questions] + np.mean(test_questions_preds_per_fold, axis=0)) / 2
 
     # do submission
     print("Printing submission file...")
@@ -443,10 +469,12 @@ def get_default_params():
         'fold_dir': 'data',
         'model_dir': 'model',
         'use_dir': 'model/universal-sentence-encoder-large-5',
+        'ckpt_questions_dir': 'outputs/bert_on_questions_1',
         'ckpt_dir': 'outputs/bert_on_all_1', 
         'sub_type': 1, 
         'do_cache': False, 
         'out_dir': 'outputs/mix_model', 
+        'device': 'cuda'
     }
 
 if __name__ == '__main__':
@@ -463,8 +491,10 @@ if __name__ == '__main__':
     parser.add_argument("--fold_dir", default="data", type=str)
     parser.add_argument("--model_dir", default="model", type=str)
     parser.add_argument("--ckpt_dir", default="outputs/bert_on_all_1", type=str)
+    parser.add_argument("--ckpt_questions_dir", default="outputs/bert_on_questions_1", type=str)
     parser.add_argument("--sub_type", default=1, type=int)
     parser.add_argument("--do_cache", action='store_true')
+    parser.add_argument("--device", default="cuda", type=str)
 
     args = parser.parse_args()
 
