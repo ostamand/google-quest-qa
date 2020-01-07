@@ -357,7 +357,7 @@ def train_loop(train_df, test_df, fold_n, params):
 
     ckpt_path = os.path.join(p['out_dir'], f"model_state_dict_fold_{fold_n}.pth")
 
-    to_run_train = False if p['ckpt_mixed_dir'] is not None and os.path.exists(ckpt_path) else False
+    to_run_train = False if p['ckpt_mixed_dir'] is not None and os.path.exists(ckpt_path) else True
 
     # do training if needed
     if to_run_train:
@@ -477,7 +477,7 @@ def get_default_params():
         'use_dir': 'model/universal-sentence-encoder-large-5',
         'ckpt_questions_dir': 'outputs/bert_on_questions_1',
         'ckpt_dir': 'outputs/bert_on_all_1', 
-        'ckpt_mixed_dir': 'outputs/mix_model_3',
+        'ckpt_mixed_dir': None,
         'sub_type': 1, 
         'do_cache': False, 
         'out_dir': 'outputs/mix_model_3', 
@@ -499,7 +499,7 @@ if __name__ == '__main__':
     parser.add_argument("--model_dir", default="model", type=str)
     parser.add_argument("--ckpt_dir", default="outputs/bert_on_all_1", type=str)
     parser.add_argument("--ckpt_questions_dir", default="outputs/bert_on_questions_1", type=str)
-    parser.add_argument("--ckpt_mixed_dir", default='outputs/mix_model_3', type=str)
+    parser.add_argument("--ckpt_mixed_dir", default=None, type=str)
     parser.add_argument("--sub_type", default=1, type=int)
     parser.add_argument("--do_cache", action='store_true')
     parser.add_argument("--device", default="cuda", type=str)
