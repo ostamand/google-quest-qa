@@ -7,7 +7,7 @@
         --accumulation_step 2 \
         --epochs 5 \
         --lr 2e-5 \
-        --out_dir outputs/bert_on_all_lm_3 \
+        --out_dir outputs/bert_on_all_lm_4 \
         --dp 0. \
         --bert_wd 0.01 \
         --max_len_q_b 150 \

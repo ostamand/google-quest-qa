@@ -1,12 +1,9 @@
-(cd ..; python3 train_bert_on.py \
+(cd ..; python3 train_bert_on_answers.py \
         --do_apex \
         --do_wandb \
-        --maxlen 512 \
         --bs 4 \
         --accumulation_steps 2 \
-        --dp 0.2 \
-        --lr1 1e-3 \
-        --fold 0 \
-        --do_answer \
-        --out_dir outputs/bert_on_answers)
-# will not do head
+        --lr2 2e-5 \
+        --fold 4 \
+        --model_dir outputs/lm_finetuning_all \
+        --out_dir outputs/bert_on_answers_1 )

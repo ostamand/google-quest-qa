@@ -9,7 +9,7 @@ from train_bert_on_all import main as run_train
 
 def main():
     params = {
-        'seed': 1,
+        'seed': 42,
         'do_apex': True,
         'do_wandb': True,
         'do_tb': False,
@@ -18,11 +18,11 @@ def main():
         'accumulation_step': 2,
         'epochs': 5,
         'lr': 2e-5, 
-        'out_dir': 'outputs/bert_on_all_lm_3',
+        'out_dir': 'outputs/bert_on_all_lm_4',
         'dp': 0.,
         'bert_wd': 0.01,
         'max_len_q_b': 150, 
-        'model_dir': 'outputs/lm_finetuning_all',
+        'model_dir': 'model/bert-base-uncased',
         'data_dir': 'data',
         'device': 'cuda',
         'project': 'google-quest-qa',
